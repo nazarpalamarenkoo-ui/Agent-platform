@@ -24,7 +24,7 @@ class ConfigBundle(Base):
     )
 
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"),
+        ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
@@ -34,7 +34,7 @@ class ConfigBundle(Base):
         nullable=False,
         index=True,
     )
-    
+
     name: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
@@ -53,16 +53,28 @@ class ConfigBundle(Base):
 
     user: Mapped["User"] = relationship(
         back_populates="configs",
+        lazy="selectin",
+        passive_deletes=True,
+    )
+
+    agent: Mapped["AgentProfile"] = relationship(
+        back_populates="config_bundles",
+        lazy="selectin",
+        passive_deletes=True,
     )
 
     skills: Mapped[list["Skill"]] = relationship(
         secondary="config_bundle_skills",
         back_populates="config_bundles",
+        lazy="selectin",
+        passive_deletes=True,
     )
 
     tools: Mapped[list["ToolDefinition"]] = relationship(
         secondary="config_bundle_tools",
         back_populates="config_bundles",
+        lazy="selectin",
+        passive_deletes=True,
     )
 
     def __repr__(self):

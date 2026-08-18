@@ -27,15 +27,22 @@ class AgentProfile(Base):
     skills: Mapped[list["Skill"]] = relationship(
         secondary="agent_profile_skills",
         back_populates="agent_profiles",
+        lazy="selectin",
+        passive_deletes=True,
     )
     
     tools: Mapped[list["ToolDefinition"]] = relationship(
         secondary="agent_profile_tools",
         back_populates="agent_profiles",
+        lazy="selectin",
+        passive_deletes=True,
     )
 
     config_bundles: Mapped[list["ConfigBundle"]] = relationship(
         back_populates="agent",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
     )
  
     def __repr__(self):

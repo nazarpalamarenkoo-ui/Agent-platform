@@ -13,7 +13,7 @@ class TokenUsageEvent(Base):
         autoincrement=True
     )
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id"), 
+        ForeignKey("users.id", ondelete='CASCADE'), 
         nullable=False, 
         index=True
     )
@@ -30,4 +30,4 @@ class TokenUsageEvent(Base):
         server_default=func.now()
     )
     
-    user: Mapped["User"] = relationship(back_populates="token_usage_events")
+    user: Mapped["User"] = relationship(back_populates="token_usage_events", lazy="selectin", passive_deletes=True)

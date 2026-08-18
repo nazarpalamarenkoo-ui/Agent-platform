@@ -46,11 +46,15 @@ class User(Base):
     configs: Mapped[list["ConfigBundle"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
+        lazy="selectin",
+        passive_deletes=True
     )
     
     token_usage_events: Mapped[list["TokenUsageEvent"]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
+        lazy="selectin",
+        passive_deletes=True
     )
     
     def __repr__(self):

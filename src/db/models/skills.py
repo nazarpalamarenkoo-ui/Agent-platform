@@ -33,11 +33,15 @@ class Skill(Base):
     config_bundles: Mapped[list["ConfigBundle"]] = relationship(
         secondary="config_bundle_skills",
         back_populates="skills",
+        lazy="selectin",
+        passive_deletes=True,
     )
 
     agent_profiles: Mapped[list["AgentProfile"]] = relationship(
         secondary="agent_profile_skills",
         back_populates="skills",
+        lazy="selectin",
+        passive_deletes=True,
     )
 
     def __repr__(self):
