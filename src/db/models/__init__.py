@@ -10,4 +10,11 @@ from . import (
     tools_definition,
     token_usage_events,
     users,
+    document,
+    document_chunks,
+    document_tags,
+    knowledge_domains,
+    skill_usage_events,
+    tool_usage_events,
+    tags,
 )

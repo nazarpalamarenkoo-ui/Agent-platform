@@ -17,9 +17,8 @@ class TokenUsageEvent(Base):
         nullable=False, 
         index=True
     )
-    agent_id: Mapped[int] = mapped_column(
-        ForeignKey("agent_profiles.id"), 
-        nullable=True
+    agent_id: Mapped[int | None] = mapped_column(
+        ForeignKey("agent_profiles.id", ondelete="SET NULL"), nullable=True,
     )
     tokens_used: Mapped[int] = mapped_column(
         Integer, 

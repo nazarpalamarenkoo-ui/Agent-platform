@@ -1,10 +1,13 @@
-from sqlalchemy import Integer, String
+from sqlalchemy import Integer, String, UniqueConstraint, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.db.db_connection import Base
 
 
 class Skill(Base):
     __tablename__ = "skills"
+    __table_args__ = (
+        UniqueConstraint("skill_name", "domain_id", name="uq_skill_name_domain"),
+    )
 
     id: Mapped[int] = mapped_column(
         primary_key=True,
@@ -14,7 +17,6 @@ class Skill(Base):
 
     skill_name: Mapped[str] = mapped_column(
         String(100),
-        unique=True,
         index=True,
         nullable=False,
     )
@@ -23,12 +25,13 @@ class Skill(Base):
         String(255),
         nullable=False,
     )
-
-    skill_selected_freq: Mapped[int] = mapped_column(
-        Integer,
-        default=0,
-        nullable=False,
+    domain_id: Mapped[int] = mapped_column(
+        ForeignKey("knowledge_domains.id", ondelete="RESTRICT"), nullable=False, index=True,
     )
+    
+    domain: Mapped["KnowledgeDomain"] = relationship(lazy="selectin")
+    
+    skill_selected_freq: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     config_bundles: Mapped[list["ConfigBundle"]] = relationship(
         secondary="config_bundle_skills",
