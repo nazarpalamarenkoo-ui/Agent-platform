@@ -14,7 +14,15 @@ from src.db.models.agent_profile_tools import AgentProfileTool
 from src.db.models.config_bundle_skills import ConfigBundleSkill
 from src.db.models.config_bunlde_tools import ConfigBundleTool
 from src.db.enums.device_code_status import DeviceStatus
-
+from src.db.models.knowledge_domains import KnowledgeDomain
+from src.db.models.tags import Tag
+from src.db.models.document import Document
+from src.db.models.document_chunks import DocumentChunk
+from src.db.models.document_tags import DocumentTag
+from src.db.models.skill_usage_events import SkillUsageEvent
+from src.db.models.tool_usage_events import ToolUsageEvent
+from src.db.enums.document_status import DocumentStatus
+from src.db.enums.document_type import DocumentType
 
 pytestmark = pytest.mark.unit
 
@@ -55,8 +63,12 @@ async def test_user_repr(sample_user):
     assert repr(sample_user) == f"<User id={sample_user.id} username={sample_user.username}>"
 
 
-async def test_skill_creation(db_session):
-    skill = Skill(skill_name="summarization", description="Summarizes text")
+async def test_skill_creation(db_session, sample_knowledge_domain):
+    skill = Skill(
+        skill_name="summarization",
+        description="Summarizes text",
+        domain_id=sample_knowledge_domain.id,
+    )
     db_session.add(skill)
     await db_session.commit()
     await db_session.refresh(skill)
@@ -64,15 +76,45 @@ async def test_skill_creation(db_session):
     assert skill.id is not None
     assert skill.skill_name == "summarization"
     assert skill.skill_selected_freq == 0
+    assert skill.domain_id == sample_knowledge_domain.id
 
 
-async def test_skill_name_must_be_unique(db_session, sample_skill):
-    duplicate = Skill(skill_name=sample_skill.skill_name, description="Another description")
+async def test_skill_requires_domain(db_session):
+    skill = Skill(skill_name="summarization", description="Summarizes text")
+    db_session.add(skill)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_skill_name_must_be_unique_within_domain(db_session, sample_skill):
+    duplicate = Skill(
+        skill_name=sample_skill.skill_name,
+        description="Another description",
+        domain_id=sample_skill.domain_id,
+    )
     db_session.add(duplicate)
 
     with pytest.raises(IntegrityError):
         await db_session.commit()
     await db_session.rollback()
+
+
+async def test_skill_same_name_allowed_in_different_domain(
+    db_session, sample_skill, another_knowledge_domain
+):
+    same_name_other_domain = Skill(
+        skill_name=sample_skill.skill_name,
+        description="Same name, different domain",
+        domain_id=another_knowledge_domain.id,
+    )
+    db_session.add(same_name_other_domain)
+    await db_session.commit()
+    await db_session.refresh(same_name_other_domain)
+
+    assert same_name_other_domain.id is not None
+    assert same_name_other_domain.id != sample_skill.id
 
 
 async def test_skill_repr(sample_skill):
@@ -376,3 +418,264 @@ async def test_deleting_agent_profile_cascades_skill_links(db_session, sample_ag
 
     remaining_skill = await db_session.get(Skill, skill_id)
     assert remaining_skill is not None
+    
+async def test_knowledge_domain_creation(db_session):
+    domain = KnowledgeDomain(
+        slug="testing-strategy",
+        name="Testing Strategy",
+        description="Test design across languages",
+    )
+    db_session.add(domain)
+    await db_session.commit()
+    await db_session.refresh(domain)
+
+    assert domain.id is not None
+    assert domain.slug == "testing-strategy"
+    assert repr(domain) == f"<KnowledgeDomain id={domain.id} slug={domain.slug}>"
+
+
+async def test_knowledge_domain_slug_must_be_unique(db_session, sample_knowledge_domain):
+    duplicate = KnowledgeDomain(
+        slug=sample_knowledge_domain.slug,
+        name="Duplicate",
+        description="Should fail",
+    )
+    db_session.add(duplicate)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_knowledge_domain_parent_child_relationship(
+    db_session, sample_knowledge_domain, child_knowledge_domain
+):
+    await db_session.refresh(sample_knowledge_domain, attribute_names=["children"])
+
+    assert child_knowledge_domain in sample_knowledge_domain.children
+    assert child_knowledge_domain.parent_domain_id == sample_knowledge_domain.id
+
+
+async def test_deleting_parent_domain_sets_child_parent_id_null(
+    db_session, sample_knowledge_domain, child_knowledge_domain
+):
+    await db_session.delete(sample_knowledge_domain)
+    await db_session.commit()
+
+    result = await db_session.get(KnowledgeDomain, child_knowledge_domain.id, populate_existing=True)
+    assert result is not None
+    assert result.parent_domain_id is None
+
+
+async def test_tag_creation(db_session):
+    tag = Tag(tag_name="system-design")
+    db_session.add(tag)
+    await db_session.commit()
+    await db_session.refresh(tag)
+
+    assert tag.id is not None
+    assert tag.tag_name == "system-design"
+
+
+async def test_tag_name_must_be_unique(db_session, sample_tag):
+    duplicate = Tag(tag_name=sample_tag.tag_name)
+    db_session.add(duplicate)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_document_tags_relationship(db_session, sample_document, sample_tag, another_tag):
+    sample_document.tags.append(sample_tag)
+    sample_document.tags.append(another_tag)
+    db_session.add(sample_document)
+    await db_session.commit()
+    await db_session.refresh(sample_document)
+
+    assert sample_tag in sample_document.tags
+    assert another_tag in sample_document.tags
+    assert sample_document in sample_tag.documents
+
+
+async def test_deleting_document_cascades_document_tag_link(
+    db_session, sample_document, sample_tag
+):
+    sample_document.tags.append(sample_tag)
+    db_session.add(sample_document)
+    await db_session.commit()
+
+    document_id, tag_id = sample_document.id, sample_tag.id
+    await db_session.delete(sample_document)
+    await db_session.commit()
+
+    link = await db_session.get(DocumentTag, (document_id, tag_id))
+    assert link is None
+
+    remaining_tag = await db_session.get(Tag, tag_id)
+    assert remaining_tag is not None
+
+
+
+async def test_document_creation_unclassified(db_session, sample_document):
+    assert sample_document.id is not None
+    assert sample_document.domain_id is None
+    assert sample_document.status == DocumentStatus.PENDING
+    assert sample_document.version == 1
+
+
+async def test_document_creation_classified(db_session, classified_document, sample_knowledge_domain):
+    assert classified_document.domain_id == sample_knowledge_domain.id
+    assert classified_document.status == DocumentStatus.INDEXED
+
+
+async def test_document_unique_source_hash_version(db_session, sample_document):
+    duplicate = Document(
+        source=sample_document.source,
+        document_type=DocumentType.BOOK,
+        size=1,
+        content_hash=sample_document.content_hash,
+        version=sample_document.version,
+        scraped_at=sample_document.scraped_at,
+        embedding_model="text-embedding-3-large",
+    )
+    db_session.add(duplicate)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_document_reindex_new_version_allowed(db_session, sample_document):
+    new_version = Document(
+        source=sample_document.source,
+        document_type=sample_document.document_type,
+        size=sample_document.size,
+        content_hash=sample_document.content_hash,
+        version=sample_document.version + 1,
+        scraped_at=sample_document.scraped_at,
+        embedding_model=sample_document.embedding_model,
+    )
+    db_session.add(new_version)
+    await db_session.commit()
+    await db_session.refresh(new_version)
+
+    assert new_version.id is not None
+    assert new_version.id != sample_document.id
+
+
+async def test_deleting_domain_sets_document_domain_id_null(
+    db_session, classified_document, sample_knowledge_domain
+):
+    await db_session.delete(sample_knowledge_domain)
+    await db_session.commit()
+
+    result = await db_session.get(Document, classified_document.id, populate_existing=True)
+    assert result is not None
+    assert result.domain_id is None
+
+
+async def test_document_chunk_creation(db_session, sample_document_chunk, classified_document):
+    assert sample_document_chunk.id is not None
+    assert sample_document_chunk.document_id == classified_document.id
+    assert repr(sample_document_chunk) == (
+        f"<DocumentChunk id={sample_document_chunk.id} "
+        f"document_id={sample_document_chunk.document_id} "
+        f"chunk_index={sample_document_chunk.chunk_index}>"
+    )
+
+
+async def test_document_chunk_unique_index_per_document(db_session, sample_document_chunk, classified_document):
+    duplicate = DocumentChunk(
+        document_id=classified_document.id,
+        chunk_index=sample_document_chunk.chunk_index,
+        qdrant_point_id="point-0002",
+        token_count=256,
+    )
+    db_session.add(duplicate)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_document_chunk_qdrant_point_id_must_be_unique(db_session, sample_document_chunk, classified_document):
+    duplicate = DocumentChunk(
+        document_id=classified_document.id,
+        chunk_index=sample_document_chunk.chunk_index + 1,
+        qdrant_point_id=sample_document_chunk.qdrant_point_id,
+        token_count=256,
+    )
+    db_session.add(duplicate)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_deleting_document_cascades_chunks(db_session, sample_document_chunk, classified_document):
+    chunk_id = sample_document_chunk.id
+    await db_session.delete(classified_document)
+    await db_session.commit()
+
+    result = await db_session.get(DocumentChunk, chunk_id, populate_existing=True)
+    assert result is None
+
+
+async def test_skill_usage_event_creation(db_session, sample_skill_usage_event, sample_skill, sample_user):
+    assert sample_skill_usage_event.id is not None
+    assert sample_skill_usage_event.skill_id == sample_skill.id
+    assert sample_skill_usage_event.user_id == sample_user.id
+    assert sample_skill_usage_event.selected_at is not None
+
+
+async def test_skill_usage_event_config_bundle_is_nullable(db_session, sample_skill, sample_user):
+    event = SkillUsageEvent(skill_id=sample_skill.id, user_id=sample_user.id, config_bundle_id=None)
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+
+    assert event.config_bundle_id is None
+
+
+async def test_deleting_skill_cascades_usage_events(db_session, sample_skill_usage_event, sample_skill):
+    event_id = sample_skill_usage_event.id
+    await db_session.delete(sample_skill)
+    await db_session.commit()
+
+    result = await db_session.get(SkillUsageEvent, event_id, populate_existing=True)
+    assert result is None
+
+
+async def test_deleting_config_bundle_sets_skill_usage_event_config_bundle_id_null(
+    db_session, sample_skill_usage_event, sample_config_bundle
+):
+    await db_session.delete(sample_config_bundle)
+    await db_session.commit()
+
+    result = await db_session.get(SkillUsageEvent, sample_skill_usage_event.id, populate_existing=True)
+    assert result is not None
+    assert result.config_bundle_id is None
+
+
+async def test_tool_usage_event_creation(db_session, sample_tool_usage_event, sample_tool, sample_user):
+    assert sample_tool_usage_event.id is not None
+    assert sample_tool_usage_event.tool_id == sample_tool.id
+    assert sample_tool_usage_event.user_id == sample_user.id
+
+
+async def test_deleting_tool_cascades_usage_events(db_session, sample_tool_usage_event, sample_tool):
+    event_id = sample_tool_usage_event.id
+    await db_session.delete(sample_tool)
+    await db_session.commit()
+
+    result = await db_session.get(ToolUsageEvent, event_id, populate_existing=True)
+    assert result is None
+
+
+async def test_tool_can_be_created_without_domain(db_session, sample_tool):
+    assert sample_tool.domain_id is None
+
+
+async def test_tool_can_be_scoped_to_domain(db_session, domain_scoped_tool, another_knowledge_domain):
+    assert domain_scoped_tool.domain_id == another_knowledge_domain.id

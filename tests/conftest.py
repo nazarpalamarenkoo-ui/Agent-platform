@@ -14,7 +14,15 @@ from src.db.models.tools_definition import ToolDefinition
 from src.db.models.config_bundles import ConfigBundle
 from src.db.models.token_usage_events import TokenUsageEvent
 from src.db.models.device_code import DeviceCode
+from src.db.models.knowledge_domains import KnowledgeDomain
+from src.db.models.tags import Tag
+from src.db.models.document import Document
+from src.db.models.document_chunks import DocumentChunk
+from src.db.models.skill_usage_events import SkillUsageEvent
+from src.db.models.tool_usage_events import ToolUsageEvent
 from src.db.enums.device_code_status import DeviceStatus
+from src.db.enums.document_status import DocumentStatus
+from src.db.enums.document_type import DocumentType
 from src.test_config import test_settings
 
 
@@ -53,7 +61,6 @@ async def db_session(db_engine):
         proxy = SessionFactoryProxy(session)
         yield proxy
         await session.rollback()
-
 
 class SessionFactoryProxy:
 
@@ -122,10 +129,51 @@ async def another_agent_profile(db_session):
 
 
 @pytest_asyncio.fixture
-async def sample_skill(db_session):
+async def sample_knowledge_domain(db_session):
+    domain = KnowledgeDomain(
+        slug="backend-api-design",
+        name="Backend API Design",
+        description="Designing backend APIs regardless of framework",
+    )
+    db_session.add(domain)
+    await db_session.commit()
+    await db_session.refresh(domain)
+    return domain
+
+
+@pytest_asyncio.fixture
+async def another_knowledge_domain(db_session):
+    domain = KnowledgeDomain(
+        slug="driver-development",
+        name="Driver Development",
+        description="Designing low-level drivers across languages",
+    )
+    db_session.add(domain)
+    await db_session.commit()
+    await db_session.refresh(domain)
+    return domain
+
+
+@pytest_asyncio.fixture
+async def child_knowledge_domain(db_session, sample_knowledge_domain):
+    domain = KnowledgeDomain(
+        slug="rest-api-design",
+        name="REST API Design",
+        description="REST-specific conventions, nested under backend-api-design",
+        parent_domain_id=sample_knowledge_domain.id,
+    )
+    db_session.add(domain)
+    await db_session.commit()
+    await db_session.refresh(domain)
+    return domain
+
+
+@pytest_asyncio.fixture
+async def sample_skill(db_session, sample_knowledge_domain):
     skill = Skill(
         skill_name="summarization",
         description="Summarize text",
+        domain_id=sample_knowledge_domain.id,
     )
     db_session.add(skill)
     await db_session.commit()
@@ -134,15 +182,17 @@ async def sample_skill(db_session):
 
 
 @pytest_asyncio.fixture
-async def another_skill(db_session):
+async def another_skill(db_session, sample_knowledge_domain):
     skill = Skill(
         skill_name="translation",
         description="Translate text skill",
+        domain_id=sample_knowledge_domain.id,
     )
     db_session.add(skill)
     await db_session.commit()
     await db_session.refresh(skill)
     return skill
+
 
 @pytest_asyncio.fixture
 async def sample_tool(db_session):
@@ -161,6 +211,19 @@ async def another_tool(db_session):
     tool = ToolDefinition(
         tool_name="code_execution",
         description="Test code in sandbox",
+    )
+    db_session.add(tool)
+    await db_session.commit()
+    await db_session.refresh(tool)
+    return tool
+
+
+@pytest_asyncio.fixture
+async def domain_scoped_tool(db_session, another_knowledge_domain):
+    tool = ToolDefinition(
+        tool_name="c_driver_docs_tool",
+        description="Live docs lookup scoped to driver development",
+        domain_id=another_knowledge_domain.id,
     )
     db_session.add(tool)
     await db_session.commit()
@@ -218,6 +281,7 @@ async def sample_token_usage_event(db_session, sample_user, sample_agent_profile
     await db_session.refresh(event)
     return event
 
+
 @pytest_asyncio.fixture
 async def sample_device_code(db_session, sample_user):
     device_code = DeviceCode(
@@ -248,3 +312,99 @@ async def approved_device_code(db_session, sample_user):
     await db_session.commit()
     await db_session.refresh(device_code)
     return device_code
+
+
+@pytest_asyncio.fixture
+async def sample_tag(db_session):
+    tag = Tag(tag_name="system-design")
+    db_session.add(tag)
+    await db_session.commit()
+    await db_session.refresh(tag)
+    return tag
+
+
+@pytest_asyncio.fixture
+async def another_tag(db_session):
+    tag = Tag(tag_name="driver-architecture")
+    db_session.add(tag)
+    await db_session.commit()
+    await db_session.refresh(tag)
+    return tag
+
+
+@pytest_asyncio.fixture
+async def sample_document(db_session):
+    """Unclassified документ: domain_id=None, чекає ingestion pipeline."""
+    document = Document(
+        source="https://example.com/designing-data-intensive-applications.pdf",
+        document_type=DocumentType.BOOK,
+        size=204_800,
+        content_hash="a" * 64,
+        version=1,
+        scraped_at=datetime.now(timezone.utc),
+        status=DocumentStatus.PENDING,
+        embedding_model="text-embedding-3-large",
+    )
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+    return document
+
+
+@pytest_asyncio.fixture
+async def classified_document(db_session, sample_knowledge_domain):
+    document = Document(
+        source="https://example.com/backend-api-design-patterns.pdf",
+        domain_id=sample_knowledge_domain.id,
+        document_type=DocumentType.ARCHITECTURE_DOC,
+        size=102_400,
+        content_hash="b" * 64,
+        version=1,
+        scraped_at=datetime.now(timezone.utc),
+        status=DocumentStatus.INDEXED,
+        embedding_model="text-embedding-3-large",
+    )
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+    return document
+
+
+@pytest_asyncio.fixture
+async def sample_document_chunk(db_session, classified_document):
+    chunk = DocumentChunk(
+        document_id=classified_document.id,
+        chunk_index=0,
+        qdrant_point_id="point-0001",
+        token_count=512,
+    )
+    db_session.add(chunk)
+    await db_session.commit()
+    await db_session.refresh(chunk)
+    return chunk
+
+
+@pytest_asyncio.fixture
+async def sample_skill_usage_event(db_session, sample_skill, sample_user, sample_config_bundle):
+    event = SkillUsageEvent(
+        skill_id=sample_skill.id,
+        user_id=sample_user.id,
+        config_bundle_id=sample_config_bundle.id,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+    return event
+
+
+@pytest_asyncio.fixture
+async def sample_tool_usage_event(db_session, sample_tool, sample_user, sample_config_bundle):
+    event = ToolUsageEvent(
+        tool_id=sample_tool.id,
+        user_id=sample_user.id,
+        config_bundle_id=sample_config_bundle.id,
+    )
+    db_session.add(event)
+    await db_session.commit()
+    await db_session.refresh(event)
+    return event
