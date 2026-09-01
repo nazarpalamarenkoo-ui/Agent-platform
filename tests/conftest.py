@@ -1,4 +1,18 @@
+import asyncio
+import sys
 import pytest
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
+
+
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
@@ -20,16 +34,25 @@ from src.db.models.document import Document
 from src.db.models.document_chunks import DocumentChunk
 from src.db.models.skill_usage_events import SkillUsageEvent
 from src.db.models.tool_usage_events import ToolUsageEvent
+
+from src.db.models.agent_profile_skills import AgentProfileSkill
+from src.db.models.agent_profile_tools import AgentProfileTool
+from src.db.models.config_bundle_skills import ConfigBundleSkill
+from src.db.models.config_bunlde_tools import ConfigBundleTool
+from src.db.models.document_tags import DocumentTag
+from src.db.models.skills_domain import SkillDomain
+
 from src.db.enums.device_code_status import DeviceStatus
 from src.db.enums.document_status import DocumentStatus
 from src.db.enums.document_type import DocumentType
+from src.db.enums.knowledge_types import KnowledgeType
 from src.test_config import test_settings
 
 
 TEST_DATABASE = test_settings.TEST_DATABASE_URL
 
 
-@pytest_asyncio.fixture(scope="function")
+@pytest_asyncio.fixture(scope="session")
 async def db_engine():
     engine = create_async_engine(TEST_DATABASE, echo=False, poolclass=NullPool)
 
@@ -40,27 +63,22 @@ async def db_engine():
 
     yield engine
 
-    async with engine.begin() as conn:
-        await conn.execute(text("DROP SCHEMA public CASCADE"))
-        await conn.execute(text("CREATE SCHEMA public"))
-
     await engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session(db_engine):
-    async_session_maker = async_sessionmaker(
-        bind=db_engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autoflush=False,
-        autocommit=False,
-    )
+    async with db_engine.connect() as conn:
+        trans = await conn.begin()
+        async_session_maker = async_sessionmaker(
+            bind=conn, class_=AsyncSession, expire_on_commit=False,
+            join_transaction_mode="create_savepoint"
+        )
+        async with async_session_maker() as session:
+            proxy = SessionFactoryProxy(session)
+            yield proxy
+        await trans.rollback()
 
-    async with async_session_maker() as session:
-        proxy = SessionFactoryProxy(session)
-        yield proxy
-        await session.rollback()
 
 class SessionFactoryProxy:
 
@@ -334,7 +352,6 @@ async def another_tag(db_session):
 
 @pytest_asyncio.fixture
 async def sample_document(db_session):
-    """Unclassified документ: domain_id=None, чекає ingestion pipeline."""
     document = Document(
         source="https://example.com/designing-data-intensive-applications.pdf",
         document_type=DocumentType.BOOK,
@@ -344,6 +361,7 @@ async def sample_document(db_session):
         scraped_at=datetime.now(timezone.utc),
         status=DocumentStatus.PENDING,
         embedding_model="text-embedding-3-large",
+        knowledge_type=KnowledgeType.REFERENCE,
     )
     db_session.add(document)
     await db_session.commit()
@@ -363,6 +381,7 @@ async def classified_document(db_session, sample_knowledge_domain):
         scraped_at=datetime.now(timezone.utc),
         status=DocumentStatus.INDEXED,
         embedding_model="text-embedding-3-large",
+        knowledge_type=KnowledgeType.PRINCIPLE,
     )
     db_session.add(document)
     await db_session.commit()

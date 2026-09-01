@@ -6,6 +6,7 @@ from sqlalchemy.sql import func
 from src.db.db_connection import Base
 from src.db.enums.document_status import DocumentStatus
 from src.db.enums.document_type import DocumentType
+from src.db.enums.knowledge_types import KnowledgeType
 
 class Document(Base):
     __tablename__ = "documents"
@@ -30,8 +31,7 @@ class Document(Base):
     tags: Mapped[list["Tag"]] = relationship(
         secondary="document_tags", back_populates="documents", lazy="selectin", passive_deletes=True,
     )
-
-    content_hash: Mapped[str] = mapped_column(String(64), nullable=False) 
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -40,6 +40,8 @@ class Document(Base):
     status: Mapped[DocumentStatus] = mapped_column(Enum(DocumentStatus), nullable=False, default=DocumentStatus.PENDING)
     embedding_model: Mapped[str] = mapped_column(String(150), nullable=False)
     embedding_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
+    knowledge_type: Mapped[KnowledgeType] = mapped_column(Enum(KnowledgeType, name="knowledge_type"), nullable=False)
 
     chunks: Mapped[list["DocumentChunk"]] = relationship(
         back_populates="document", lazy="selectin", cascade="all, delete-orphan", passive_deletes=True,

@@ -538,6 +538,7 @@ async def test_document_unique_source_hash_version(db_session, sample_document):
         version=sample_document.version,
         scraped_at=sample_document.scraped_at,
         embedding_model="text-embedding-3-large",
+        knowledge_type=sample_document.knowledge_type,
     )
     db_session.add(duplicate)
 
@@ -555,6 +556,7 @@ async def test_document_reindex_new_version_allowed(db_session, sample_document)
         version=sample_document.version + 1,
         scraped_at=sample_document.scraped_at,
         embedding_model=sample_document.embedding_model,
+        knowledge_type=sample_document.knowledge_type,
     )
     db_session.add(new_version)
     await db_session.commit()

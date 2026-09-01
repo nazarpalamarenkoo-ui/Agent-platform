@@ -17,4 +17,5 @@ from . import (
     skill_usage_events,
     tool_usage_events,
     tags,
+    skills_domain
 )

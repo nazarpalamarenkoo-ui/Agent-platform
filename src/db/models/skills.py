@@ -25,12 +25,18 @@ class Skill(Base):
         String(255),
         nullable=False,
     )
+
     domain_id: Mapped[int] = mapped_column(
-        ForeignKey("knowledge_domains.id", ondelete="RESTRICT"), nullable=False, index=True,
+        ForeignKey("knowledge_domains.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
-    
-    domain: Mapped["KnowledgeDomain"] = relationship(lazy="selectin")
-    
+
+    domain: Mapped["KnowledgeDomain"] = relationship(
+        back_populates="skills",
+        lazy="selectin",
+    )
+
     skill_selected_freq: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     config_bundles: Mapped[list["ConfigBundle"]] = relationship(
