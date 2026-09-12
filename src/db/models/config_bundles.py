@@ -77,5 +77,12 @@ class ConfigBundle(Base):
         passive_deletes=True,
     )
 
+    knowledge_packs: Mapped[list["KnowledgePack"]] = relationship(
+        secondary="config_bundle_knowledge_packs",
+        back_populates="config_bundles",
+        lazy="selectin",
+        passive_deletes=True,
+    )
+
     def __repr__(self):
         return f"<ConfigBundle id={self.id} name={self.name}>"

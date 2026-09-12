@@ -29,6 +29,7 @@ from src.db.models.config_bundles import ConfigBundle
 from src.db.models.token_usage_events import TokenUsageEvent
 from src.db.models.device_code import DeviceCode
 from src.db.models.knowledge_domains import KnowledgeDomain
+from src.db.models.knowledge_packs import KnowledgePack
 from src.db.models.tags import Tag
 from src.db.models.document import Document
 from src.db.models.document_chunks import DocumentChunk
@@ -39,8 +40,10 @@ from src.db.models.agent_profile_skills import AgentProfileSkill
 from src.db.models.agent_profile_tools import AgentProfileTool
 from src.db.models.config_bundle_skills import ConfigBundleSkill
 from src.db.models.config_bunlde_tools import ConfigBundleTool
+from src.db.models.config_bundle_knowledge_packs import ConfigBundleKnowledgePack
 from src.db.models.document_tags import DocumentTag
 from src.db.models.skills_domain import SkillDomain
+from src.db.models.tool_domain import ToolDomain
 
 from src.db.enums.device_code_status import DeviceStatus
 from src.db.enums.document_status import DocumentStatus
@@ -187,11 +190,38 @@ async def child_knowledge_domain(db_session, sample_knowledge_domain):
 
 
 @pytest_asyncio.fixture
-async def sample_skill(db_session, sample_knowledge_domain):
+async def sample_knowledge_pack(db_session, sample_knowledge_domain):
+    pack = KnowledgePack(
+        slug="backend-api-design-pack",
+        name="Backend API Design Pack",
+        domain_id=sample_knowledge_domain.id,
+        description="Reference material for backend API design",
+    )
+    db_session.add(pack)
+    await db_session.commit()
+    await db_session.refresh(pack)
+    return pack
+
+
+@pytest_asyncio.fixture
+async def another_knowledge_pack(db_session, another_knowledge_domain):
+    pack = KnowledgePack(
+        slug="driver-development-pack",
+        name="Driver Development Pack",
+        domain_id=another_knowledge_domain.id,
+        description="Reference material for driver development",
+    )
+    db_session.add(pack)
+    await db_session.commit()
+    await db_session.refresh(pack)
+    return pack
+
+
+@pytest_asyncio.fixture
+async def sample_skill(db_session):
     skill = Skill(
         skill_name="summarization",
         description="Summarize text",
-        domain_id=sample_knowledge_domain.id,
     )
     db_session.add(skill)
     await db_session.commit()
@@ -200,16 +230,24 @@ async def sample_skill(db_session, sample_knowledge_domain):
 
 
 @pytest_asyncio.fixture
-async def another_skill(db_session, sample_knowledge_domain):
+async def another_skill(db_session):
     skill = Skill(
         skill_name="translation",
         description="Translate text skill",
-        domain_id=sample_knowledge_domain.id,
     )
     db_session.add(skill)
     await db_session.commit()
     await db_session.refresh(skill)
     return skill
+
+
+@pytest_asyncio.fixture
+async def skill_with_domain(db_session, sample_skill, sample_knowledge_domain):
+    sample_skill.domains.append(sample_knowledge_domain)
+    db_session.add(sample_skill)
+    await db_session.commit()
+    await db_session.refresh(sample_skill)
+    return sample_skill
 
 
 @pytest_asyncio.fixture
@@ -241,8 +279,8 @@ async def domain_scoped_tool(db_session, another_knowledge_domain):
     tool = ToolDefinition(
         tool_name="c_driver_docs_tool",
         description="Live docs lookup scoped to driver development",
-        domain_id=another_knowledge_domain.id,
     )
+    tool.domains.append(another_knowledge_domain)
     db_session.add(tool)
     await db_session.commit()
     await db_session.refresh(tool)
@@ -281,6 +319,17 @@ async def config_bundle_with_skill_and_tool(
 ):
     sample_config_bundle.skills.append(sample_skill)
     sample_config_bundle.tools.append(sample_tool)
+    db_session.add(sample_config_bundle)
+    await db_session.commit()
+    await db_session.refresh(sample_config_bundle)
+    return sample_config_bundle
+
+
+@pytest_asyncio.fixture
+async def config_bundle_with_knowledge_pack(
+    db_session, sample_config_bundle, sample_knowledge_pack
+):
+    sample_config_bundle.knowledge_packs.append(sample_knowledge_pack)
     db_session.add(sample_config_bundle)
     await db_session.commit()
     await db_session.refresh(sample_config_bundle)
@@ -370,10 +419,10 @@ async def sample_document(db_session):
 
 
 @pytest_asyncio.fixture
-async def classified_document(db_session, sample_knowledge_domain):
+async def classified_document(db_session, sample_knowledge_pack):
     document = Document(
         source="https://example.com/backend-api-design-patterns.pdf",
-        domain_id=sample_knowledge_domain.id,
+        knowledge_pack_id=sample_knowledge_pack.id,
         document_type=DocumentType.ARCHITECTURE_DOC,
         size=102_400,
         content_hash="b" * 64,

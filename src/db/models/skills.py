@@ -6,7 +6,7 @@ from src.db.db_connection import Base
 class Skill(Base):
     __tablename__ = "skills"
     __table_args__ = (
-        UniqueConstraint("skill_name", "domain_id", name="uq_skill_name_domain"),
+        UniqueConstraint("skill_name", name="uq_skill_name"),
     )
 
     id: Mapped[int] = mapped_column(
@@ -26,19 +26,14 @@ class Skill(Base):
         nullable=False,
     )
 
-    domain_id: Mapped[int] = mapped_column(
-        ForeignKey("knowledge_domains.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-
-    domain: Mapped["KnowledgeDomain"] = relationship(
+    skill_selected_freq: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    
+    domains: Mapped[list["KnowledgeDomain"]] = relationship(
+        secondary="skill_domains",
         back_populates="skills",
         lazy="selectin",
+        passive_deletes=True,
     )
-
-    skill_selected_freq: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-
     config_bundles: Mapped[list["ConfigBundle"]] = relationship(
         secondary="config_bundle_skills",
         back_populates="skills",

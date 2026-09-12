@@ -13,8 +13,12 @@ from src.db.models.agent_profile_skills import AgentProfileSkill
 from src.db.models.agent_profile_tools import AgentProfileTool
 from src.db.models.config_bundle_skills import ConfigBundleSkill
 from src.db.models.config_bunlde_tools import ConfigBundleTool
+from src.db.models.config_bundle_knowledge_packs import ConfigBundleKnowledgePack
 from src.db.enums.device_code_status import DeviceStatus
 from src.db.models.knowledge_domains import KnowledgeDomain
+from src.db.models.knowledge_packs import KnowledgePack
+from src.db.models.skills_domain import SkillDomain
+from src.db.models.tool_domain import ToolDomain
 from src.db.models.tags import Tag
 from src.db.models.document import Document
 from src.db.models.document_chunks import DocumentChunk
@@ -63,11 +67,10 @@ async def test_user_repr(sample_user):
     assert repr(sample_user) == f"<User id={sample_user.id} username={sample_user.username}>"
 
 
-async def test_skill_creation(db_session, sample_knowledge_domain):
+async def test_skill_creation(db_session):
     skill = Skill(
         skill_name="summarization",
         description="Summarizes text",
-        domain_id=sample_knowledge_domain.id,
     )
     db_session.add(skill)
     await db_session.commit()
@@ -76,23 +79,17 @@ async def test_skill_creation(db_session, sample_knowledge_domain):
     assert skill.id is not None
     assert skill.skill_name == "summarization"
     assert skill.skill_selected_freq == 0
-    assert skill.domain_id == sample_knowledge_domain.id
+    assert skill.domains == []
 
 
-async def test_skill_requires_domain(db_session):
-    skill = Skill(skill_name="summarization", description="Summarizes text")
-    db_session.add(skill)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
+async def test_skill_can_be_created_without_domain(db_session, sample_skill):
+    assert sample_skill.domains == []
 
 
-async def test_skill_name_must_be_unique_within_domain(db_session, sample_skill):
+async def test_skill_name_must_be_unique_globally(db_session, sample_skill):
     duplicate = Skill(
         skill_name=sample_skill.skill_name,
         description="Another description",
-        domain_id=sample_skill.domain_id,
     )
     db_session.add(duplicate)
 
@@ -101,24 +98,67 @@ async def test_skill_name_must_be_unique_within_domain(db_session, sample_skill)
     await db_session.rollback()
 
 
-async def test_skill_same_name_allowed_in_different_domain(
-    db_session, sample_skill, another_knowledge_domain
-):
-    same_name_other_domain = Skill(
-        skill_name=sample_skill.skill_name,
-        description="Same name, different domain",
-        domain_id=another_knowledge_domain.id,
-    )
-    db_session.add(same_name_other_domain)
-    await db_session.commit()
-    await db_session.refresh(same_name_other_domain)
-
-    assert same_name_other_domain.id is not None
-    assert same_name_other_domain.id != sample_skill.id
-
-
 async def test_skill_repr(sample_skill):
     assert repr(sample_skill) == f"<Skill id={sample_skill.id} name={sample_skill.skill_name}>"
+
+
+async def test_skill_domains_relationship(db_session, sample_skill, sample_knowledge_domain):
+    sample_skill.domains.append(sample_knowledge_domain)
+    db_session.add(sample_skill)
+    await db_session.commit()
+    await db_session.refresh(sample_skill)
+
+    assert sample_knowledge_domain in sample_skill.domains
+    assert sample_skill in sample_knowledge_domain.skills
+
+
+async def test_skill_can_belong_to_multiple_domains(
+    db_session, sample_skill, sample_knowledge_domain, another_knowledge_domain
+):
+    sample_skill.domains.extend([sample_knowledge_domain, another_knowledge_domain])
+    db_session.add(sample_skill)
+    await db_session.commit()
+    await db_session.refresh(sample_skill)
+
+    assert {d.id for d in sample_skill.domains} == {
+        sample_knowledge_domain.id,
+        another_knowledge_domain.id,
+    }
+
+
+async def test_skill_domain_link_row_exists(db_session, skill_with_domain, sample_knowledge_domain):
+    link = await db_session.get(SkillDomain, (skill_with_domain.id, sample_knowledge_domain.id))
+    assert link is not None
+
+
+async def test_deleting_domain_removes_skill_domain_link_but_not_skill(
+    db_session, skill_with_domain, sample_knowledge_domain
+):
+    skill_id, domain_id = skill_with_domain.id, sample_knowledge_domain.id
+
+    await db_session.delete(sample_knowledge_domain)
+    await db_session.commit()
+
+    link = await db_session.get(SkillDomain, (skill_id, domain_id))
+    assert link is None
+
+    remaining_skill = await db_session.get(Skill, skill_id)
+    assert remaining_skill is not None
+
+
+async def test_deleting_skill_removes_skill_domain_link_but_not_domain(
+    db_session, skill_with_domain, sample_knowledge_domain
+):
+    skill_id, domain_id = skill_with_domain.id, sample_knowledge_domain.id
+
+    await db_session.delete(skill_with_domain)
+    await db_session.commit()
+
+    link = await db_session.get(SkillDomain, (skill_id, domain_id))
+    assert link is None
+
+    remaining_domain = await db_session.get(KnowledgeDomain, domain_id)
+    assert remaining_domain is not None
 
 
 async def test_tool_creation(db_session):
@@ -143,6 +183,35 @@ async def test_tool_name_must_be_unique(db_session, sample_tool):
 
 async def test_tool_repr(sample_tool):
     assert repr(sample_tool) == f"<ToolDefinition id={sample_tool.id} name={sample_tool.tool_name}>"
+
+
+async def test_tool_can_be_created_without_domain(db_session, sample_tool):
+    assert sample_tool.domains == []
+
+
+async def test_tool_can_be_scoped_to_domain(db_session, domain_scoped_tool, another_knowledge_domain):
+    assert another_knowledge_domain in domain_scoped_tool.domains
+    assert domain_scoped_tool in another_knowledge_domain.tools
+
+
+async def test_tool_domain_link_row_exists(db_session, domain_scoped_tool, another_knowledge_domain):
+    link = await db_session.get(ToolDomain, (domain_scoped_tool.id, another_knowledge_domain.id))
+    assert link is not None
+
+
+async def test_deleting_domain_removes_tool_domain_link_but_not_tool(
+    db_session, domain_scoped_tool, another_knowledge_domain
+):
+    tool_id, domain_id = domain_scoped_tool.id, another_knowledge_domain.id
+
+    await db_session.delete(another_knowledge_domain)
+    await db_session.commit()
+
+    link = await db_session.get(ToolDomain, (tool_id, domain_id))
+    assert link is None
+
+    remaining_tool = await db_session.get(ToolDefinition, tool_id)
+    assert remaining_tool is not None
 
 
 async def test_agent_profile_creation(db_session):
@@ -259,6 +328,43 @@ async def test_config_bundle_tools_relationship(db_session, sample_config_bundle
 
     assert sample_tool in sample_config_bundle.tools
     assert sample_config_bundle in sample_tool.config_bundles
+
+
+async def test_config_bundle_knowledge_packs_relationship(
+    db_session, sample_config_bundle, sample_knowledge_pack
+):
+    sample_config_bundle.knowledge_packs.append(sample_knowledge_pack)
+    db_session.add(sample_config_bundle)
+    await db_session.commit()
+    await db_session.refresh(sample_config_bundle)
+
+    assert sample_knowledge_pack in sample_config_bundle.knowledge_packs
+    assert sample_config_bundle in sample_knowledge_pack.config_bundles
+
+
+async def test_config_bundle_knowledge_pack_link_row_exists(
+    db_session, config_bundle_with_knowledge_pack, sample_knowledge_pack
+):
+    link = await db_session.get(
+        ConfigBundleKnowledgePack,
+        (config_bundle_with_knowledge_pack.id, sample_knowledge_pack.id),
+    )
+    assert link is not None
+
+
+async def test_deleting_config_bundle_removes_knowledge_pack_link_but_not_pack(
+    db_session, config_bundle_with_knowledge_pack, sample_knowledge_pack
+):
+    bundle_id, pack_id = config_bundle_with_knowledge_pack.id, sample_knowledge_pack.id
+
+    await db_session.delete(config_bundle_with_knowledge_pack)
+    await db_session.commit()
+
+    link = await db_session.get(ConfigBundleKnowledgePack, (bundle_id, pack_id))
+    assert link is None
+
+    remaining_pack = await db_session.get(KnowledgePack, pack_id)
+    assert remaining_pack is not None
 
 
 async def test_config_bundle_repr(sample_config_bundle):
@@ -456,15 +562,116 @@ async def test_knowledge_domain_parent_child_relationship(
     assert child_knowledge_domain.parent_domain_id == sample_knowledge_domain.id
 
 
-async def test_deleting_parent_domain_sets_child_parent_id_null(
+async def test_deleting_parent_domain_cascades_child_domain(
     db_session, sample_knowledge_domain, child_knowledge_domain
 ):
+    child_id = child_knowledge_domain.id
+
     await db_session.delete(sample_knowledge_domain)
     await db_session.commit()
 
-    result = await db_session.get(KnowledgeDomain, child_knowledge_domain.id, populate_existing=True)
-    assert result is not None
-    assert result.parent_domain_id is None
+    result = await db_session.get(KnowledgeDomain, child_id, populate_existing=True)
+    assert result is None
+
+
+async def test_knowledge_domain_skills_relationship(db_session, skill_with_domain, sample_knowledge_domain):
+    await db_session.refresh(sample_knowledge_domain, attribute_names=["skills"])
+    assert skill_with_domain in sample_knowledge_domain.skills
+
+
+async def test_knowledge_domain_tools_relationship(db_session, domain_scoped_tool, another_knowledge_domain):
+    await db_session.refresh(another_knowledge_domain, attribute_names=["tools"])
+    assert domain_scoped_tool in another_knowledge_domain.tools
+
+
+async def test_knowledge_domain_knowledge_packs_relationship(
+    db_session, sample_knowledge_domain, sample_knowledge_pack
+):
+    await db_session.refresh(sample_knowledge_domain, attribute_names=["knowledge_packs"])
+    assert sample_knowledge_pack in sample_knowledge_domain.knowledge_packs
+    assert sample_knowledge_pack.domain.id == sample_knowledge_domain.id
+
+
+async def test_knowledge_pack_creation(db_session, sample_knowledge_pack, sample_knowledge_domain):
+    assert sample_knowledge_pack.id is not None
+    assert sample_knowledge_pack.slug == "backend-api-design-pack"
+    assert sample_knowledge_pack.version == 1
+    assert sample_knowledge_pack.domain_id == sample_knowledge_domain.id
+    assert sample_knowledge_pack.created_at is not None
+
+
+async def test_knowledge_pack_slug_must_be_unique(db_session, sample_knowledge_pack):
+    duplicate = KnowledgePack(
+        slug=sample_knowledge_pack.slug,
+        name="Different name",
+        domain_id=sample_knowledge_pack.domain_id,
+        description="Should fail on slug",
+    )
+    db_session.add(duplicate)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_knowledge_pack_name_unique_per_domain(db_session, sample_knowledge_pack):
+    duplicate = KnowledgePack(
+        slug="different-slug",
+        name=sample_knowledge_pack.name,
+        domain_id=sample_knowledge_pack.domain_id,
+        description="Should fail on domain+name",
+    )
+    db_session.add(duplicate)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_knowledge_pack_same_name_allowed_in_different_domain(
+    db_session, sample_knowledge_pack, another_knowledge_domain
+):
+    pack = KnowledgePack(
+        slug="different-slug-again",
+        name=sample_knowledge_pack.name,
+        domain_id=another_knowledge_domain.id,
+        description="Same name, different domain",
+    )
+    db_session.add(pack)
+    await db_session.commit()
+    await db_session.refresh(pack)
+
+    assert pack.id is not None
+    assert pack.id != sample_knowledge_pack.id
+
+
+async def test_knowledge_pack_repr(sample_knowledge_pack):
+    assert repr(sample_knowledge_pack) == f"<KnowledgePack id={sample_knowledge_pack.id} slug={sample_knowledge_pack.slug}>"
+
+
+async def test_knowledge_pack_requires_domain(db_session):
+    pack = KnowledgePack(
+        slug="orphan-pack",
+        name="Orphan Pack",
+        description="Missing domain_id",
+    )
+    db_session.add(pack)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_deleting_domain_cascades_knowledge_packs(
+    db_session, sample_knowledge_domain, sample_knowledge_pack
+):
+    pack_id = sample_knowledge_pack.id
+
+    await db_session.delete(sample_knowledge_domain)
+    await db_session.commit()
+
+    result = await db_session.get(KnowledgePack, pack_id, populate_existing=True)
+    assert result is None
 
 
 async def test_tag_creation(db_session):
@@ -519,13 +726,14 @@ async def test_deleting_document_cascades_document_tag_link(
 
 async def test_document_creation_unclassified(db_session, sample_document):
     assert sample_document.id is not None
-    assert sample_document.domain_id is None
+    assert sample_document.knowledge_pack_id is None
     assert sample_document.status == DocumentStatus.PENDING
     assert sample_document.version == 1
 
 
-async def test_document_creation_classified(db_session, classified_document, sample_knowledge_domain):
-    assert classified_document.domain_id == sample_knowledge_domain.id
+async def test_document_creation_classified(db_session, classified_document, sample_knowledge_pack):
+    assert classified_document.knowledge_pack_id == sample_knowledge_pack.id
+    assert classified_document.knowledge_pack.id == sample_knowledge_pack.id
     assert classified_document.status == DocumentStatus.INDEXED
 
 
@@ -566,15 +774,28 @@ async def test_document_reindex_new_version_allowed(db_session, sample_document)
     assert new_version.id != sample_document.id
 
 
-async def test_deleting_domain_sets_document_domain_id_null(
-    db_session, classified_document, sample_knowledge_domain
+async def test_deleting_knowledge_pack_sets_document_knowledge_pack_id_null(
+    db_session, classified_document, sample_knowledge_pack
 ):
-    await db_session.delete(sample_knowledge_domain)
+    await db_session.delete(sample_knowledge_pack)
     await db_session.commit()
 
     result = await db_session.get(Document, classified_document.id, populate_existing=True)
     assert result is not None
-    assert result.domain_id is None
+    assert result.knowledge_pack_id is None
+
+
+async def test_deleting_domain_cascades_to_documents_via_knowledge_pack(
+    db_session, sample_knowledge_domain, classified_document
+):
+    document_id = classified_document.id
+
+    await db_session.delete(sample_knowledge_domain)
+    await db_session.commit()
+
+    result = await db_session.get(Document, document_id, populate_existing=True)
+    assert result is not None
+    assert result.knowledge_pack_id is None
 
 
 async def test_document_chunk_creation(db_session, sample_document_chunk, classified_document):
@@ -673,11 +894,3 @@ async def test_deleting_tool_cascades_usage_events(db_session, sample_tool_usage
 
     result = await db_session.get(ToolUsageEvent, event_id, populate_existing=True)
     assert result is None
-
-
-async def test_tool_can_be_created_without_domain(db_session, sample_tool):
-    assert sample_tool.domain_id is None
-
-
-async def test_tool_can_be_scoped_to_domain(db_session, domain_scoped_tool, another_knowledge_domain):
-    assert domain_scoped_tool.domain_id == another_knowledge_domain.id

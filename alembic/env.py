@@ -14,12 +14,12 @@ import src.db.models
 from src.config import settings
 
 from src.config import settings
-print(repr(settings.DATABASE_URL_LOCAL))
+print(repr(settings.DATABASE_URL))
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 
-sync_url = settings.DATABASE_URL_LOCAL.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
+sync_url = settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql+psycopg2://")
 
 config.set_main_option(
     "sqlalchemy.url",

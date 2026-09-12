@@ -8,6 +8,7 @@ from src.db.enums.document_status import DocumentStatus
 from src.db.enums.document_type import DocumentType
 from src.db.enums.knowledge_types import KnowledgeType
 
+
 class Document(Base):
     __tablename__ = "documents"
     __table_args__ = (
@@ -17,10 +18,12 @@ class Document(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     source: Mapped[str] = mapped_column(String(1000), nullable=False, index=True)
 
-    domain_id: Mapped[int | None] = mapped_column(
-        ForeignKey("knowledge_domains.id", ondelete="SET NULL"), nullable=True, index=True,
+    knowledge_pack_id: Mapped[int | None] = mapped_column(
+        ForeignKey("knowledge_packs.id", ondelete="SET NULL"), nullable=True, index=True,
     )
-    domain: Mapped["KnowledgeDomain | None"] = relationship(lazy="selectin")
+    knowledge_pack: Mapped["KnowledgePack | None"] = relationship(
+        back_populates="documents", lazy="selectin",
+    )
 
     document_type: Mapped[DocumentType] = mapped_column(
         Enum(DocumentType, name="document_type"), nullable=False,
@@ -31,7 +34,7 @@ class Document(Base):
     tags: Mapped[list["Tag"]] = relationship(
         secondary="document_tags", back_populates="documents", lazy="selectin", passive_deletes=True,
     )
-    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
@@ -46,3 +49,6 @@ class Document(Base):
     chunks: Mapped[list["DocumentChunk"]] = relationship(
         back_populates="document", lazy="selectin", cascade="all, delete-orphan", passive_deletes=True,
     )
+
+    def __repr__(self):
+        return f"<Document id={self.id} source={self.source}>"

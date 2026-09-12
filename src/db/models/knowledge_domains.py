@@ -30,9 +30,22 @@ class KnowledgeDomain(Base):
     )
 
     skills: Mapped[list["Skill"]] = relationship(
-        back_populates="domain",
+        secondary="skill_domains",
+        back_populates="domains",
         lazy="selectin",
         passive_deletes=True,
+    )
+
+    tools: Mapped[list["ToolDefinition"]] = relationship(
+        secondary="tool_domains",
+        back_populates="domains",
+        lazy="selectin",
+        passive_deletes=True,
+    )
+
+    knowledge_packs: Mapped[list["KnowledgePack"]] = relationship(
+        back_populates="domain",
+        lazy="selectin",
     )
 
     def __repr__(self):

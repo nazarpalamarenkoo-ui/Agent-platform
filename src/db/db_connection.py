@@ -5,7 +5,7 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 from src.config import settings
 from contextlib import asynccontextmanager
 
-DATABASE_URL = settings.DATABASE_URL_LOCAL
+DATABASE_URL = settings.DATABASE_URL
 
 Base = declarative_base()
 
@@ -55,7 +55,12 @@ Base = declarative_base(metadata=metadata)
 
 async def get_db():
     async with AsyncSessionLocal() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 @asynccontextmanager

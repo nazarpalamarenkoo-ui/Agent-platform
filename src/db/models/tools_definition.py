@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, String, ForeignKey
+from sqlalchemy import Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.db.db_connection import Base
 
@@ -24,17 +24,17 @@ class ToolDefinition(Base):
         nullable=False,
     )
 
-    domain_id: Mapped[int | None] = mapped_column(
-        ForeignKey("knowledge_domains.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    domain: Mapped["KnowledgeDomain | None"] = relationship(lazy="selectin")
-
     tool_selected_freq: Mapped[int] = mapped_column(
         Integer,
         default=0,
         nullable=False,
+    )
+
+    domains: Mapped[list["KnowledgeDomain"]] = relationship(
+        secondary="tool_domains",
+        back_populates="tools",
+        lazy="selectin",
+        passive_deletes=True,
     )
 
     config_bundles: Mapped[list["ConfigBundle"]] = relationship(
