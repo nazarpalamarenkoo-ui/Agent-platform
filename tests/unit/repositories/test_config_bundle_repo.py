@@ -61,12 +61,45 @@ class TestConfigBundleRepository:
 
         assert result is sample_config_bundle
 
+    async def test_add_knowledge_pack_appends_once(
+        self, config_repo, sample_config_bundle, sample_knowledge_pack
+    ):
+        await config_repo.add_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+        await config_repo.add_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+
+        assert len(sample_config_bundle.knowledge_packs) == 1
+        assert sample_knowledge_pack in sample_config_bundle.knowledge_packs
+
+    async def test_remove_knowledge_pack_removes_existing(
+        self, config_repo, sample_config_bundle, sample_knowledge_pack
+    ):
+        await config_repo.add_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+
+        await config_repo.remove_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+
+        assert sample_knowledge_pack not in sample_config_bundle.knowledge_packs
+
+    async def test_remove_knowledge_pack_noop_when_absent(
+        self, config_repo, sample_config_bundle, sample_knowledge_pack
+    ):
+        result = await config_repo.remove_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+
+        assert result is sample_config_bundle
+
     async def test_get_by_id_with_relations_found(self, config_repo, config_bundle_with_skill_and_tool):
         found = await config_repo.get_by_id_with_relations(config_bundle_with_skill_and_tool.id)
 
         assert found is not None
         assert len(found.skills) == 1
         assert len(found.tools) == 1
+
+    async def test_get_by_id_with_relations_loads_knowledge_packs(
+        self, config_repo, config_bundle_with_knowledge_pack, sample_knowledge_pack
+    ):
+        found = await config_repo.get_by_id_with_relations(config_bundle_with_knowledge_pack.id)
+
+        assert found is not None
+        assert sample_knowledge_pack.id in {p.id for p in found.knowledge_packs}
 
     async def test_get_by_id_with_relations_not_found(self, config_repo):
         found = await config_repo.get_by_id_with_relations(999999)

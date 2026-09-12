@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from src.db.models.config_bundles import ConfigBundle
 from src.db.models.skills import Skill
 from src.db.models.tools_definition import ToolDefinition
+from src.db.models.knowledge_packs import KnowledgePack
 
 from src.repositories.base_repo import BaseRepository
 
@@ -16,12 +17,12 @@ class ConfigBundleRepository(BaseRepository[ConfigBundle]):
         super().__init__(session, ConfigBundle)
 
     async def get_for_user_and_agent(self, user_id: int, agent_id: int) -> list[ConfigBundle]:
-
         result = await self.session.execute(
             select(ConfigBundle)
             .options(
                 selectinload(ConfigBundle.skills),
                 selectinload(ConfigBundle.tools),
+                selectinload(ConfigBundle.knowledge_packs),
             )
             .where(
                 ConfigBundle.user_id == user_id,
@@ -62,17 +63,32 @@ class ConfigBundleRepository(BaseRepository[ConfigBundle]):
         await self.session.flush()
         return config
 
-    async def get_by_id_with_relations(self, config_id: int) -> Optional[ConfigBundle]:
+    async def add_knowledge_pack(self, config: ConfigBundle, pack: KnowledgePack) -> ConfigBundle:
+        await self.session.refresh(config, attribute_names=["knowledge_packs"])
+        if pack in config.knowledge_packs:
+            return config
+        config.knowledge_packs.append(pack)
+        await self.session.flush()
+        return config
 
+    async def remove_knowledge_pack(self, config: ConfigBundle, pack: KnowledgePack) -> ConfigBundle:
+        await self.session.refresh(config, attribute_names=["knowledge_packs"])
+        if pack not in config.knowledge_packs:
+            return config
+        config.knowledge_packs.remove(pack)
+        await self.session.flush()
+        return config
+
+    async def get_by_id_with_relations(self, config_id: int) -> Optional[ConfigBundle]:
         result = await self.session.execute(
             select(ConfigBundle)
             .options(
                 selectinload(ConfigBundle.skills),
-                selectinload(ConfigBundle.tools)
+                selectinload(ConfigBundle.tools),
+                selectinload(ConfigBundle.knowledge_packs),
             )
             .where(
                 ConfigBundle.id == config_id
             )
         )
-
         return result.scalar_one_or_none()

@@ -124,6 +124,75 @@ class TestConfigBundleToolAssociation:
         assert another_tool.id in tool_ids
 
 
+class TestConfigBundleKnowledgePackAssociation:
+
+    async def test_add_knowledge_pack_is_persisted(
+        self, config_repo, db_session, sample_config_bundle, sample_knowledge_pack
+    ):
+        await config_repo.add_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+        await db_session.commit()
+
+        bundle_id = sample_config_bundle.id
+        db_session.expire(sample_config_bundle)
+        reloaded = await config_repo.get_by_id_with_relations(bundle_id)
+
+        pack_ids = {p.id for p in reloaded.knowledge_packs}
+        assert sample_knowledge_pack.id in pack_ids
+
+    async def test_remove_knowledge_pack_is_persisted(
+        self, config_repo, db_session, sample_config_bundle, sample_knowledge_pack
+    ):
+        await config_repo.add_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+        await db_session.commit()
+
+        await config_repo.remove_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+        await db_session.commit()
+
+        bundle_id = sample_config_bundle.id
+        db_session.expire(sample_config_bundle)
+        reloaded = await config_repo.get_by_id_with_relations(bundle_id)
+
+        pack_ids = {p.id for p in reloaded.knowledge_packs}
+        assert sample_knowledge_pack.id not in pack_ids
+
+    async def test_deleting_knowledge_pack_removes_it_from_bundle(
+        self, config_repo, db_session, sample_config_bundle, sample_knowledge_pack
+    ):
+        from src.db.models.knowledge_packs import KnowledgePack
+
+        await config_repo.add_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+        await db_session.commit()
+
+        pack = await db_session.get(KnowledgePack, sample_knowledge_pack.id)
+        await db_session.delete(pack)
+        await db_session.commit()
+
+        bundle_id = sample_config_bundle.id
+        db_session.expire(sample_config_bundle)
+        reloaded = await config_repo.get_by_id_with_relations(bundle_id)
+
+        pack_ids = {p.id for p in reloaded.knowledge_packs}
+        assert sample_knowledge_pack.id not in pack_ids
+
+    async def test_deleting_bundle_does_not_delete_knowledge_pack(
+        self, config_repo, db_session, sample_config_bundle, sample_knowledge_pack
+    ):
+        from src.db.models.knowledge_packs import KnowledgePack
+
+        await config_repo.add_knowledge_pack(sample_config_bundle, sample_knowledge_pack)
+        await db_session.commit()
+
+        await config_repo.delete(sample_config_bundle)
+        await db_session.commit()
+
+        result = await db_session.execute(
+            select(KnowledgePack)
+            .where(KnowledgePack.id == sample_knowledge_pack.id)
+            .execution_options(populate_existing=True)
+        )
+        assert result.scalar_one_or_none() is not None
+
+
 class TestConfigBundleGetForUserAndAgent:
 
     async def test_returns_all_bundles_for_user_agent_pair(

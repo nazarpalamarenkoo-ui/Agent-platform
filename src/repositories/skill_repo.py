@@ -14,6 +14,12 @@ class SkillRepository(BaseRepository[Skill]):
     def __init__(self, session: AsyncSession):
         super().__init__(session, Skill)
 
+    async def get_by_name(self, skill_name: str) -> Optional[Skill]:
+        result = await self.session.execute(
+            select(Skill).where(Skill.skill_name == skill_name)
+        )
+        return result.scalar_one_or_none()
+
     async def record_selection(
         self,
         skill_id: int,
@@ -33,23 +39,18 @@ class SkillRepository(BaseRepository[Skill]):
         await self.session.flush()
         return skill
 
-    async def get_by_name_and_domain(self, skill_name: str, domain_id: int) -> Optional[Skill]:
-        # Skill has a single, required domain_id FK (not a many-to-many).
-        result = await self.session.execute(
-            select(Skill).where(
-                Skill.skill_name == skill_name,
-                Skill.domain_id == domain_id,
-            )
-        )
-        return result.scalar_one_or_none()
-
-    async def list_by_domain(self, domain_id: int) -> list[Skill]:
-        result = await self.session.execute(
-            select(Skill).where(Skill.domain_id == domain_id)
-        )
-        return list(result.scalars().all())
-
-    async def change_domain(self, skill: Skill, domain: KnowledgeDomain) -> Skill:
-        skill.domain_id = domain.id
+    async def add_domain(self, skill: Skill, domain: KnowledgeDomain) -> Skill:
+        await self.session.refresh(skill, attribute_names=["domains"])
+        if domain not in skill.domains:
+            skill.domains.append(domain)
         await self.session.flush()
         return skill
+
+    async def list_by_domain(self, domain_id: int) -> list[Skill]:
+        from src.db.models.skills_domain import SkillDomain
+        result = await self.session.execute(
+            select(Skill)
+            .join(SkillDomain, Skill.id == SkillDomain.skill_id)
+            .where(SkillDomain.domain_id == domain_id)
+        )
+        return list(result.scalars().all())

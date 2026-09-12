@@ -27,6 +27,10 @@ class UserRepository(BaseRepository[User]):
         
         return result.scalar_one_or_none()
     
+    async def exists_by_email(self, email: str) -> bool:
+        result = await self.session.execute(select(User.id).where(User.email == email))
+        return result.scalar_one_or_none() is not None
+            
     async def update_password(self, user: User, new_password_hash: str) -> User:
         user.password_hash = new_password_hash
         await self.session.flush()

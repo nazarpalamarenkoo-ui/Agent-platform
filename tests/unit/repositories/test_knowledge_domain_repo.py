@@ -12,6 +12,27 @@ def domain_repo(db_session):
 
 class TestKnowledgeDomainRepository:
 
+    async def test_create_persists_domain(self, domain_repo):
+        domain = await domain_repo.create(
+            slug="observability",
+            name="Observability",
+            description="Logging, metrics and tracing",
+        )
+
+        assert domain.id is not None
+        assert domain.slug == "observability"
+
+    async def test_create_returns_domain_with_children_loaded(
+        self, domain_repo, sample_knowledge_domain, child_knowledge_domain
+    ):
+        domain = await domain_repo.create(
+            slug="fresh-domain",
+            name="Fresh Domain",
+            description="Newly created, no children yet",
+        )
+
+        assert domain.children == []
+
     async def test_get_by_slug_found(self, domain_repo, sample_knowledge_domain):
         found = await domain_repo.get_by_slug(sample_knowledge_domain.slug)
 

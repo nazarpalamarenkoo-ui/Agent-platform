@@ -20,7 +20,7 @@ def doc_repo(db_session):
 
 class TestDocumentUniqueConstraints:
 
-    async def test_cannot_create_two_documents_with_same_content_hash(
+    async def test_cannot_create_two_documents_with_same_source_hash_and_version(
         self, doc_repo, db_session
     ):
         await doc_repo.create(
@@ -37,8 +37,10 @@ class TestDocumentUniqueConstraints:
         await db_session.commit()
 
         with pytest.raises(IntegrityError):
+            # Same source + content_hash + version triggers the
+            # uq_document_source_hash_version constraint.
             await doc_repo.create(
-                source="https://example.com/doc-b.pdf",
+                source="https://example.com/doc-a.pdf",
                 document_type=DocumentType.BOOK,
                 size=2048,
                 content_hash="c" * 64,
@@ -51,6 +53,38 @@ class TestDocumentUniqueConstraints:
             await db_session.commit()
 
         await db_session.rollback()
+
+    async def test_reindexing_same_source_with_new_version_is_allowed(
+        self, doc_repo, db_session
+    ):
+        original = await doc_repo.create(
+            source="https://example.com/doc-reindex.pdf",
+            document_type=DocumentType.BOOK,
+            size=1024,
+            content_hash="d" * 64,
+            version=1,
+            scraped_at=datetime.now(timezone.utc),
+            status=DocumentStatus.PENDING,
+            embedding_model="text-embedding-3-large",
+            knowledge_type=KnowledgeType.REFERENCE,
+        )
+        await db_session.commit()
+
+        new_version = await doc_repo.create(
+            source="https://example.com/doc-reindex.pdf",
+            document_type=DocumentType.BOOK,
+            size=1024,
+            content_hash="e" * 64,
+            version=2,
+            scraped_at=datetime.now(timezone.utc),
+            status=DocumentStatus.PENDING,
+            embedding_model="text-embedding-3-large",
+            knowledge_type=KnowledgeType.REFERENCE,
+        )
+        await db_session.commit()
+
+        assert new_version.id is not None
+        assert new_version.id != original.id
 
 
 class TestDocumentUpdateStatus:
@@ -83,39 +117,39 @@ class TestDocumentUpdateStatus:
         assert reloaded.status == DocumentStatus.PENDING
 
 
-class TestDocumentAssignDomain:
+class TestDocumentAssignKnowledgePack:
 
-    async def test_assign_domain_is_persisted(
-        self, doc_repo, db_session, sample_document, sample_knowledge_domain
+    async def test_assign_domain_sets_knowledge_pack_and_is_persisted(
+        self, doc_repo, db_session, sample_document, sample_knowledge_pack
     ):
-        await doc_repo.assign_domain(sample_document.id, sample_knowledge_domain.id)
+        await doc_repo.assign_domain(sample_document.id, sample_knowledge_pack.id)
         await db_session.commit()
 
         doc_id = sample_document.id
         db_session.expire(sample_document)
         reloaded = await doc_repo.get_by_id(doc_id)
 
-        assert reloaded.domain_id == sample_knowledge_domain.id
+        assert reloaded.knowledge_pack_id == sample_knowledge_pack.id
 
-    async def test_reassign_domain_overwrites(
+    async def test_reassign_to_different_pack_overwrites(
         self, doc_repo, db_session, classified_document,
-        sample_knowledge_domain, another_knowledge_domain
+        sample_knowledge_pack, another_knowledge_pack
     ):
-        await doc_repo.assign_domain(classified_document.id, another_knowledge_domain.id)
+        await doc_repo.assign_domain(classified_document.id, another_knowledge_pack.id)
         await db_session.commit()
 
         doc_id = classified_document.id
         db_session.expire(classified_document)
         reloaded = await doc_repo.get_by_id(doc_id)
 
-        assert reloaded.domain_id == another_knowledge_domain.id
+        assert reloaded.knowledge_pack_id == another_knowledge_pack.id
 
     async def test_assign_domain_does_not_alter_status(
-        self, doc_repo, db_session, sample_document, sample_knowledge_domain
+        self, doc_repo, db_session, sample_document, sample_knowledge_pack
     ):
         original_status = sample_document.status
 
-        await doc_repo.assign_domain(sample_document.id, sample_knowledge_domain.id)
+        await doc_repo.assign_domain(sample_document.id, sample_knowledge_pack.id)
         await db_session.commit()
 
         doc_id = sample_document.id
@@ -123,6 +157,23 @@ class TestDocumentAssignDomain:
         reloaded = await doc_repo.get_by_id(doc_id)
 
         assert reloaded.status == original_status
+
+    async def test_deleting_knowledge_pack_sets_document_pack_id_null(
+        self, doc_repo, db_session, classified_document, sample_knowledge_pack
+    ):
+        from src.db.models.knowledge_packs import KnowledgePack
+
+        doc_id = classified_document.id
+
+        pack = await db_session.get(KnowledgePack, sample_knowledge_pack.id)
+        await db_session.delete(pack)
+        await db_session.commit()
+
+        db_session.expire(classified_document)
+        reloaded = await doc_repo.get_by_id(doc_id)
+
+        assert reloaded is not None
+        assert reloaded.knowledge_pack_id is None
 
 
 class TestDocumentTagAssociation:
@@ -133,13 +184,12 @@ class TestDocumentTagAssociation:
         await doc_repo.add_tag(classified_document, [sample_tag])
         await db_session.commit()
 
+        pack_id = classified_document.knowledge_pack_id
         doc_id = classified_document.id
-        domain_id = classified_document.domain_id
         db_session.expire(classified_document)
-        reloaded = await doc_repo.get_by_id(doc_id)
 
-        # Eagerly load tags via get_by_domain
-        results = await doc_repo.get_by_domain(domain_id)
+        # Eagerly load tags via get_by_pack
+        results = await doc_repo.get_by_pack(pack_id)
         doc = next(d for d in results if d.id == doc_id)
         tag_ids = {t.id for t in doc.tags}
 
@@ -157,7 +207,7 @@ class TestDocumentTagAssociation:
         await db_session.delete(tag_to_delete)
         await db_session.commit()
 
-        results = await doc_repo.get_by_domain(classified_document.domain_id)
+        results = await doc_repo.get_by_pack(classified_document.knowledge_pack_id)
         doc = next(d for d in results if d.id == classified_document.id)
         tag_ids = {t.id for t in doc.tags}
 

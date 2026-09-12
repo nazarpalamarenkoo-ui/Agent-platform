@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from src.repositories.skill_repo import SkillRepository
 from src.db.models.skill_usage_events import SkillUsageEvent
+from src.db.models.skills_domain import SkillDomain
 
 pytestmark = pytest.mark.integration
 
@@ -15,13 +16,12 @@ def skill_repo(db_session):
 
 class TestSkillUniqueConstraints:
 
-    async def test_cannot_create_two_skills_with_same_name_in_same_domain(
-        self, skill_repo, db_session, sample_knowledge_domain
+    async def test_cannot_create_two_skills_with_same_name(
+        self, skill_repo, db_session
     ):
         await skill_repo.create(
             skill_name="duplicate-skill",
             description="First",
-            domain_id=sample_knowledge_domain.id,
         )
         await db_session.commit()
 
@@ -29,44 +29,6 @@ class TestSkillUniqueConstraints:
             await skill_repo.create(
                 skill_name="duplicate-skill",
                 description="Second",
-                domain_id=sample_knowledge_domain.id,
-            )
-            await db_session.commit()
-
-        await db_session.rollback()
-
-    async def test_same_skill_name_allowed_in_different_domains(
-        self, skill_repo, db_session, sample_knowledge_domain, another_knowledge_domain
-    ):
-        skill_a = await skill_repo.create(
-            skill_name="shared-skill",
-            description="In domain A",
-            domain_id=sample_knowledge_domain.id,
-        )
-        await db_session.commit()
-
-        skill_b = await skill_repo.create(
-            skill_name="shared-skill",
-            description="In domain B",
-            domain_id=another_knowledge_domain.id,
-        )
-        await db_session.commit()
-        await db_session.refresh(skill_b)
-
-        assert skill_b.id is not None
-        assert skill_b.id != skill_a.id
-
-
-class TestSkillForeignKeyIntegrity:
-
-    async def test_cannot_create_skill_with_nonexistent_domain(
-        self, skill_repo, db_session
-    ):
-        with pytest.raises(IntegrityError):
-            await skill_repo.create(
-                skill_name="orphan-skill",
-                description="Bad FK",
-                domain_id=999_999,
             )
             await db_session.commit()
 
@@ -143,10 +105,59 @@ class TestSkillDeleteBehaviour:
         )
         assert result.scalar_one_or_none() is None
 
+
+class TestSkillDomainAssociation:
+
+    async def test_add_domain_is_persisted(
+        self, skill_repo, db_session, sample_skill, sample_knowledge_domain
+    ):
+        await skill_repo.add_domain(sample_skill, sample_knowledge_domain)
+        await db_session.commit()
+
+        skill_id = sample_skill.id
+        link = await db_session.get(SkillDomain, (skill_id, sample_knowledge_domain.id))
+
+        assert link is not None
+
+    async def test_list_by_domain_reflects_persisted_association(
+        self, skill_repo, db_session, sample_skill, another_skill, sample_knowledge_domain
+    ):
+        await skill_repo.add_domain(sample_skill, sample_knowledge_domain)
+        await db_session.commit()
+
+        results = await skill_repo.list_by_domain(sample_knowledge_domain.id)
+        ids = {s.id for s in results}
+
+        assert sample_skill.id in ids
+        assert another_skill.id not in ids
+
+    async def test_deleting_domain_removes_link_but_not_skill(
+        self, skill_repo, db_session, sample_skill, sample_knowledge_domain
+    ):
+        from src.db.models.knowledge_domains import KnowledgeDomain
+
+        await skill_repo.add_domain(sample_skill, sample_knowledge_domain)
+        await db_session.commit()
+
+        skill_id, domain_id = sample_skill.id, sample_knowledge_domain.id
+
+        domain = await db_session.get(KnowledgeDomain, domain_id)
+        await db_session.delete(domain)
+        await db_session.commit()
+
+        link = await db_session.get(SkillDomain, (skill_id, domain_id))
+        assert link is None
+
+        remaining_skill = await skill_repo.get_by_id(skill_id)
+        assert remaining_skill is not None
+
     async def test_deleting_skill_does_not_delete_domain(
         self, skill_repo, db_session, sample_skill, sample_knowledge_domain
     ):
         from src.db.models.knowledge_domains import KnowledgeDomain
+
+        await skill_repo.add_domain(sample_skill, sample_knowledge_domain)
+        await db_session.commit()
 
         await skill_repo.delete(sample_skill)
         await db_session.commit()
@@ -157,18 +168,3 @@ class TestSkillDeleteBehaviour:
             .execution_options(populate_existing=True)
         )
         assert result.scalar_one_or_none() is not None
-
-
-class TestSkillChangeDomain:
-
-    async def test_change_domain_is_persisted(
-        self, skill_repo, db_session, sample_skill, another_knowledge_domain
-    ):
-        await skill_repo.change_domain(sample_skill, another_knowledge_domain)
-        await db_session.commit()
-
-        skill_id = sample_skill.id
-        db_session.expire(sample_skill)
-        reloaded = await skill_repo.get_by_id(skill_id)
-
-        assert reloaded.domain_id == another_knowledge_domain.id

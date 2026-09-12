@@ -3,9 +3,11 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.db.models.tools_definition import ToolDefinition
-from src.db.models.tool_usage_events import ToolUsageEvent
 from src.repositories.base_repo import BaseRepository
+from src.db.models.tools_definition import ToolDefinition
+from src.db.models.tool_domain import ToolDomain
+from src.db.models.tool_usage_events import ToolUsageEvent
+from src.db.models.knowledge_domains import KnowledgeDomain
 
 
 class ToolDefinitionRepository(BaseRepository[ToolDefinition]):
@@ -38,8 +40,18 @@ class ToolDefinitionRepository(BaseRepository[ToolDefinition]):
         await self.session.flush()
         return tool
 
+    async def add_domain(self, tool: ToolDefinition, domain: KnowledgeDomain) -> ToolDefinition:
+        await self.session.refresh(tool, attribute_names=["domains"])
+        if domain not in tool.domains:
+            tool.domains.append(domain)
+        await self.session.flush()
+        return tool
+
     async def list_by_domain(self, domain_id: int) -> list[ToolDefinition]:
+        
         result = await self.session.execute(
-            select(ToolDefinition).where(ToolDefinition.domain_id == domain_id)
+            select(ToolDefinition)
+            .join(ToolDomain, ToolDefinition.id == ToolDomain.tool_id)
+            .where(ToolDomain.domain_id == domain_id)
         )
         return list(result.scalars().all())

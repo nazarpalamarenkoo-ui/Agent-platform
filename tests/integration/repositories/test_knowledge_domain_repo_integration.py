@@ -71,22 +71,53 @@ class TestKnowledgeDomainDeleteBehaviour:
         )
         assert result.scalar_one_or_none() is None
 
-    async def test_deleting_domain_cascades_to_skills(
-        self, domain_repo, db_session, sample_knowledge_domain, sample_skill
+    async def test_deleting_domain_cascades_to_knowledge_packs(
+        self, domain_repo, db_session, sample_knowledge_domain, sample_knowledge_pack
     ):
-        from src.db.models.skills import Skill
+        from src.db.models.knowledge_packs import KnowledgePack
 
-        skill_id = sample_skill.id
+        pack_id = sample_knowledge_pack.id
+
         domain = await db_session.get(KnowledgeDomain, sample_knowledge_domain.id)
         await db_session.delete(domain)
         await db_session.commit()
+
+        result = await db_session.execute(
+            select(KnowledgePack)
+            .where(KnowledgePack.id == pack_id)
+            .execution_options(populate_existing=True)
+        )
+        assert result.scalar_one_or_none() is None
+
+    async def test_deleting_domain_removes_skill_link_but_not_skill(
+        self, domain_repo, db_session, sample_knowledge_domain, sample_skill
+    ):
+        # Skill no longer has a direct domain_id FK; the association is
+        # M2M via skill_domains. Deleting a domain must clean up that
+        # link row (cascade on skill_domains.domain_id) without touching
+        # the Skill row itself.
+        from src.db.models.skills import Skill
+        from src.db.models.skills_domain import SkillDomain
+
+        sample_skill.domains.append(sample_knowledge_domain)
+        db_session.add(sample_skill)
+        await db_session.commit()
+
+        skill_id, domain_id = sample_skill.id, sample_knowledge_domain.id
+
+        domain = await db_session.get(KnowledgeDomain, domain_id)
+        await db_session.delete(domain)
+        await db_session.commit()
+
+        link = await db_session.get(SkillDomain, (skill_id, domain_id))
+        assert link is None
 
         result = await db_session.execute(
             select(Skill)
             .where(Skill.id == skill_id)
             .execution_options(populate_existing=True)
         )
-        assert result.scalar_one_or_none() is None
+        assert result.scalar_one_or_none() is not None
 
     async def test_deleting_child_does_not_delete_parent(
         self, domain_repo, db_session, sample_knowledge_domain, child_knowledge_domain

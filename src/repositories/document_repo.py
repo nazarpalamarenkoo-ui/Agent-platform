@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.db.models.document import Document
+from src.db.models.knowledge_packs import KnowledgePack
 from src.db.models.tags import Tag
 from src.db.enums.document_status import DocumentStatus
 from src.repositories.base_repo import BaseRepository
@@ -36,11 +37,21 @@ class DocumentRepository(BaseRepository[Document]):
         )
         return list(result.scalars().all())
 
-    async def get_by_domain(self, domain_id: int) -> list[Document]:
+    async def get_by_pack(self, knowledge_pack_id: int) -> list[Document]:
         result = await self.session.execute(
             select(Document)
             .options(selectinload(Document.tags))
-            .where(Document.domain_id == domain_id)
+            .where(Document.knowledge_pack_id == knowledge_pack_id)
+            .execution_options(populate_existing=True)
+        )
+        return list(result.scalars().all())
+    
+    async def get_by_domain(self, domain_id: int) -> list[Document]:
+        result = await self.session.execute(
+            select(Document)
+            .join(KnowledgePack, Document.knowledge_pack_id == KnowledgePack.id)
+            .options(selectinload(Document.tags))
+            .where(KnowledgePack.domain_id == domain_id)
             .execution_options(populate_existing=True)
         )
         return list(result.scalars().all())
@@ -56,13 +67,13 @@ class DocumentRepository(BaseRepository[Document]):
         await self.session.flush()
         return document
 
-    async def assign_domain(self, document_id: int, domain_id: int) -> Document:
+    async def assign_domain(self, document_id: int, knowledge_pack_id: int) -> Document:
         document = await self.get_by_id(document_id)
 
         if document is None:
             raise FileNotFoundError(document_id)
 
-        document.domain_id = domain_id
+        document.knowledge_pack_id = knowledge_pack_id
         await self.session.flush()
         return document
 

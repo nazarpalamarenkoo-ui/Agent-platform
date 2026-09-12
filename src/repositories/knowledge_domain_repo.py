@@ -12,7 +12,19 @@ class KnowledgeDomainRepository(BaseRepository[KnowledgeDomain]):
 
     def __init__(self, session: AsyncSession):
         super().__init__(session, KnowledgeDomain)
-
+        
+    async def create(self, **kwargs):
+        obj = KnowledgeDomain(**kwargs)
+        self.session.add(obj)
+        await self.session.flush()
+        
+        result = await self.session.execute(
+            select(KnowledgeDomain)
+            .options(selectinload(KnowledgeDomain.children))
+            .where(KnowledgeDomain.id == obj.id)
+        )
+        return result.scalar_one()
+    
     async def get_by_slug(self, slug: str) -> Optional[KnowledgeDomain]:
         result = await self.session.execute(
             select(KnowledgeDomain).where(KnowledgeDomain.slug == slug)

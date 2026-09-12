@@ -72,6 +72,10 @@ class TestTokenUsageEventRepository:
     ):
         sample_user.tokens_used = 0
         sample_user.token_limit = 10_000
+        # is_limit_exceeded() calls session.refresh() on these columns,
+        # so uncommitted in-memory changes must be flushed first or
+        # they'll be discarded in favour of the (stale) DB values.
+        await token_repo.session.flush()
 
         result = await token_repo.is_limit_exceeded(sample_user)
 
@@ -82,6 +86,7 @@ class TestTokenUsageEventRepository:
     ):
         sample_user.token_limit = 500
         sample_user.tokens_used = 500
+        await token_repo.session.flush()
 
         result = await token_repo.is_limit_exceeded(sample_user)
 
@@ -92,6 +97,7 @@ class TestTokenUsageEventRepository:
     ):
         sample_user.token_limit = 100
         sample_user.tokens_used = 999
+        await token_repo.session.flush()
 
         result = await token_repo.is_limit_exceeded(sample_user)
 

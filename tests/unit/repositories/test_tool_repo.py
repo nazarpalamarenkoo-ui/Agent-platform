@@ -57,6 +57,26 @@ class TestToolDefinitionRepository:
         with pytest.raises(IntegrityError):
             await tool_repo.record_selection(999999, sample_user.id)
 
+    async def test_add_domain_appends_once(
+        self, tool_repo, sample_tool, sample_knowledge_domain
+    ):
+        await tool_repo.add_domain(sample_tool, sample_knowledge_domain)
+        await tool_repo.add_domain(sample_tool, sample_knowledge_domain)
+
+        assert len(sample_tool.domains) == 1
+        assert sample_knowledge_domain in sample_tool.domains
+
+    async def test_add_domain_allows_multiple_domains(
+        self, tool_repo, sample_tool, sample_knowledge_domain, another_knowledge_domain
+    ):
+        await tool_repo.add_domain(sample_tool, sample_knowledge_domain)
+        await tool_repo.add_domain(sample_tool, another_knowledge_domain)
+
+        assert {d.id for d in sample_tool.domains} == {
+            sample_knowledge_domain.id,
+            another_knowledge_domain.id,
+        }
+
     async def test_list_by_domain_returns_tools(
         self, tool_repo, domain_scoped_tool, another_knowledge_domain
     ):

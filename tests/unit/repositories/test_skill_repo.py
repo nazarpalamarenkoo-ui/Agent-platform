@@ -12,55 +12,16 @@ def skill_repo(db_session):
 
 class TestSkillRepository:
 
-    async def test_get_by_name_and_domain_found(
-        self, skill_repo, sample_skill, sample_knowledge_domain
-    ):
-        found = await skill_repo.get_by_name_and_domain(
-            sample_skill.skill_name, sample_knowledge_domain.id
-        )
+    async def test_get_by_name_found(self, skill_repo, sample_skill):
+        found = await skill_repo.get_by_name(sample_skill.skill_name)
 
         assert found is not None
         assert found.id == sample_skill.id
 
-    async def test_get_by_name_and_domain_wrong_domain(
-        self, skill_repo, sample_skill, another_knowledge_domain
-    ):
-        found = await skill_repo.get_by_name_and_domain(
-            sample_skill.skill_name, another_knowledge_domain.id
-        )
+    async def test_get_by_name_not_found(self, skill_repo):
+        found = await skill_repo.get_by_name("nonexistent-skill")
 
         assert found is None
-
-    async def test_get_by_name_and_domain_wrong_name(
-        self, skill_repo, sample_knowledge_domain
-    ):
-        found = await skill_repo.get_by_name_and_domain(
-            "nonexistent-skill", sample_knowledge_domain.id
-        )
-
-        assert found is None
-
-    async def test_list_by_domain_returns_skills(
-        self, skill_repo, sample_skill, another_skill, sample_knowledge_domain
-    ):
-        results = await skill_repo.list_by_domain(sample_knowledge_domain.id)
-
-        ids = {s.id for s in results}
-        assert sample_skill.id in ids
-        assert another_skill.id in ids
-
-    async def test_list_by_domain_empty_for_unknown(self, skill_repo):
-        results = await skill_repo.list_by_domain(999999)
-
-        assert results == []
-
-    async def test_list_by_domain_excludes_other_domains(
-        self, skill_repo, sample_skill, another_knowledge_domain
-    ):
-        results = await skill_repo.list_by_domain(another_knowledge_domain.id)
-
-        ids = {s.id for s in results}
-        assert sample_skill.id not in ids
 
     async def test_record_selection_increments_freq(
         self, skill_repo, sample_skill, sample_user
@@ -96,9 +57,43 @@ class TestSkillRepository:
         with pytest.raises(IntegrityError):
             await skill_repo.record_selection(999999, sample_user.id)
 
-    async def test_change_domain(
-        self, skill_repo, sample_skill, another_knowledge_domain
+    async def test_add_domain_appends_once(
+        self, skill_repo, sample_skill, sample_knowledge_domain
     ):
-        updated = await skill_repo.change_domain(sample_skill, another_knowledge_domain)
+        await skill_repo.add_domain(sample_skill, sample_knowledge_domain)
+        await skill_repo.add_domain(sample_skill, sample_knowledge_domain)
 
-        assert updated.domain_id == another_knowledge_domain.id
+        assert len(sample_skill.domains) == 1
+        assert sample_knowledge_domain in sample_skill.domains
+
+    async def test_add_domain_allows_multiple_domains(
+        self, skill_repo, sample_skill, sample_knowledge_domain, another_knowledge_domain
+    ):
+        await skill_repo.add_domain(sample_skill, sample_knowledge_domain)
+        await skill_repo.add_domain(sample_skill, another_knowledge_domain)
+
+        assert {d.id for d in sample_skill.domains} == {
+            sample_knowledge_domain.id,
+            another_knowledge_domain.id,
+        }
+
+    async def test_list_by_domain_returns_skills(
+        self, skill_repo, skill_with_domain, sample_knowledge_domain
+    ):
+        results = await skill_repo.list_by_domain(sample_knowledge_domain.id)
+
+        ids = {s.id for s in results}
+        assert skill_with_domain.id in ids
+
+    async def test_list_by_domain_empty_for_unknown(self, skill_repo):
+        results = await skill_repo.list_by_domain(999999)
+
+        assert results == []
+
+    async def test_list_by_domain_excludes_other_domains(
+        self, skill_repo, skill_with_domain, another_knowledge_domain
+    ):
+        results = await skill_repo.list_by_domain(another_knowledge_domain.id)
+
+        ids = {s.id for s in results}
+        assert skill_with_domain.id not in ids
