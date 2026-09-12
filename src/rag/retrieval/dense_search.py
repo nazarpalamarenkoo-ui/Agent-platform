@@ -1,17 +1,14 @@
-from src.rag.embeddings.bge_m3 import Embedding
-from src.rag.storage.base_vector_store import BaseVectorStorage, VectorSearchResult
+from src.rag.rag_schemas.search_filter import SearchFilter
+from src.rag.storage.base_vector_store import BaseVectorStorage, VectorSearchResult, DenseVector
 
 class DenseSearch:
     
-    def __init__(self, embedding: Embedding, vector_store: BaseVectorStorage):
-        
-        self.embedding = embedding
+    def __init__(self, vector_store: BaseVectorStorage):
         self.vector_store = vector_store
         
-    async def search(self, query: str, limit: int) -> list[VectorSearchResult]:
-        
-        embedding_result = self.embedding.embed([query])[0]
+    async def search(self, vector: DenseVector, limit: int, filters: SearchFilter | None = None) -> list[VectorSearchResult]:
         return await self.vector_store.search_dense(
-            vector=embedding_result.dense,
+            vector=vector,
             limit=limit,
+            filters=filters
         )

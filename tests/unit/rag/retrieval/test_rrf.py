@@ -54,8 +54,6 @@ class TestFuse:
 
     def test_results_are_sorted_by_fused_score_descending(self):
         rrf = RRF()
-        # "shared" appears in both lists at rank 0, so it should out-rank
-        # anything that only appears in a single list.
         dense = [make_result("only_dense"), make_result("shared")]
         sparse = [make_result("shared"), make_result("only_sparse")]
 
@@ -106,8 +104,6 @@ class TestFuse:
         assert result[0].payload == {"text": "sparse only"}
 
     def test_dense_payload_overridden_by_sparse_when_id_appears_in_both(self):
-        # docs[result.id] is overwritten by whichever list is processed
-        # last (sparse), so the final payload comes from the sparse result.
         rrf = RRF()
         dense = [make_result("a", payload={"text": "from dense"})]
         sparse = [make_result("a", payload={"text": "from sparse"})]

@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from src.rag.rag_schemas.search_filter import SearchFilter
+
 @dataclass
 class VectorSearchResult:
     id: str
@@ -34,11 +36,11 @@ class BaseVectorStorage(ABC):
         pass
 
     @abstractmethod
-    async def search_dense(self, vector: DenseVector, limit: int) -> list[VectorSearchResult]:
+    async def search_dense(self, vector: DenseVector, limit: int, filters: SearchFilter | None = None) -> list[VectorSearchResult]:
         pass
 
     @abstractmethod
-    async def search_sparse(self, vector: SparseVector, limit: int) -> list[VectorSearchResult]:
+    async def search_sparse(self, vector: SparseVector, limit: int, filters: SearchFilter | None = None) -> list[VectorSearchResult]:
         pass
     
     @abstractmethod

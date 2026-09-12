@@ -3,19 +3,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.rag.retrieval.sparse_search import SparseSearch
-from src.rag.storage.base_vector_store import DenseVector, SparseVector, VectorSearchResult
+from src.rag.rag_schemas.search_filter import SearchFilter
+from src.rag.storage.base_vector_store import SparseVector, VectorSearchResult
 
 
-def make_embedding_result(dense_values=None, sparse_indices=None, sparse_values=None):
-    result = MagicMock()
-    result.dense = DenseVector(values=dense_values or [0.1, 0.2])
-    result.sparse = SparseVector(indices=sparse_indices or [1], values=sparse_values or [0.5])
-    return result
-
-
-@pytest.fixture
-def mock_embedding():
-    return MagicMock()
+def make_sparse_vector(indices=None, values=None) -> SparseVector:
+    return SparseVector(indices=indices or [1, 5], values=values or [0.5, 0.25])
 
 
 @pytest.fixture
@@ -26,51 +19,98 @@ def mock_vector_store():
 
 
 @pytest.fixture
-def sparse_search(mock_embedding, mock_vector_store):
-    return SparseSearch(embedding=mock_embedding, vector_store=mock_vector_store)
+def sparse_search(mock_vector_store):
+    return SparseSearch(vector_store=mock_vector_store)
+
+
+class TestSparseSearchInit:
+
+    def test_stores_vector_store(self, mock_vector_store):
+        search = SparseSearch(vector_store=mock_vector_store)
+        assert search.vector_store is mock_vector_store
 
 
 class TestSearch:
 
     @pytest.mark.asyncio
-    async def test_embeds_query_and_searches_sparse_vector(self, sparse_search, mock_embedding, mock_vector_store):
-        embedding_result = make_embedding_result(sparse_indices=[2, 4], sparse_values=[0.7, 0.3])
-        mock_embedding.embed.return_value = [embedding_result]
-        expected_results = [VectorSearchResult(id="1", score=0.8, payload={})]
-        mock_vector_store.search_sparse.return_value = expected_results
+    async def test_delegates_to_vector_store_search_sparse(
+        self, sparse_search, mock_vector_store
+    ):
+        vector = make_sparse_vector([2, 4], [0.7, 0.3])
+        expected = [VectorSearchResult(id="1", score=0.8, payload={})]
+        mock_vector_store.search_sparse.return_value = expected
 
-        results = await sparse_search.search("my query", limit=5)
+        results = await sparse_search.search(vector, limit=5)
 
-        mock_embedding.embed.assert_called_once_with(["my query"])
-        mock_vector_store.search_sparse.assert_awaited_once_with(vector=embedding_result.sparse, limit=5)
-        assert results == expected_results
-
-    @pytest.mark.asyncio
-    async def test_uses_only_first_embedding_result(self, sparse_search, mock_embedding, mock_vector_store):
-        first = make_embedding_result(sparse_indices=[1])
-        second = make_embedding_result(sparse_indices=[2])
-        mock_embedding.embed.return_value = [first, second]
-        mock_vector_store.search_sparse.return_value = []
-
-        await sparse_search.search("query", limit=3)
-
-        mock_vector_store.search_sparse.assert_awaited_once_with(vector=first.sparse, limit=3)
+        mock_vector_store.search_sparse.assert_awaited_once_with(
+            vector=vector, limit=5, filters=None
+        )
+        assert results == expected
 
     @pytest.mark.asyncio
-    async def test_passes_through_empty_results(self, sparse_search, mock_embedding, mock_vector_store):
-        mock_embedding.embed.return_value = [make_embedding_result()]
+    async def test_passes_filters_to_vector_store(
+        self, sparse_search, mock_vector_store
+    ):
+        vector = make_sparse_vector()
+        filters = SearchFilter(language="uk", knowledge_packs=["backend"])
         mock_vector_store.search_sparse.return_value = []
 
-        results = await sparse_search.search("query", limit=5)
+        await sparse_search.search(vector, limit=10, filters=filters)
+
+        mock_vector_store.search_sparse.assert_awaited_once_with(
+            vector=vector, limit=10, filters=filters
+        )
+
+    @pytest.mark.asyncio
+    async def test_filters_default_to_none(self, sparse_search, mock_vector_store):
+        mock_vector_store.search_sparse.return_value = []
+
+        await sparse_search.search(make_sparse_vector(), limit=5)
+
+        _, kwargs = mock_vector_store.search_sparse.call_args
+        assert kwargs["filters"] is None
+
+    @pytest.mark.asyncio
+    async def test_propagates_limit_to_vector_store(
+        self, sparse_search, mock_vector_store
+    ):
+        mock_vector_store.search_sparse.return_value = []
+
+        await sparse_search.search(make_sparse_vector(), limit=42)
+
+        _, kwargs = mock_vector_store.search_sparse.call_args
+        assert kwargs["limit"] == 42
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_list_when_store_returns_nothing(
+        self, sparse_search, mock_vector_store
+    ):
+        mock_vector_store.search_sparse.return_value = []
+
+        results = await sparse_search.search(make_sparse_vector(), limit=5)
 
         assert results == []
 
     @pytest.mark.asyncio
-    async def test_propagates_limit_to_vector_store(self, sparse_search, mock_embedding, mock_vector_store):
-        mock_embedding.embed.return_value = [make_embedding_result()]
+    async def test_passes_vector_unchanged_to_store(
+        self, sparse_search, mock_vector_store
+    ):
+        vector = SparseVector(indices=[10, 20], values=[0.9, 0.1])
         mock_vector_store.search_sparse.return_value = []
 
-        await sparse_search.search("query", limit=42)
+        await sparse_search.search(vector, limit=5)
 
         _, kwargs = mock_vector_store.search_sparse.call_args
-        assert kwargs["limit"] == 42
+        assert kwargs["vector"].indices == [10, 20]
+        assert kwargs["vector"].values == [0.9, 0.1]
+
+    @pytest.mark.asyncio
+    async def test_returns_all_results_from_store(
+        self, sparse_search, mock_vector_store
+    ):
+        results = [VectorSearchResult(id=str(i), score=float(i), payload={}) for i in range(3)]
+        mock_vector_store.search_sparse.return_value = results
+
+        returned = await sparse_search.search(make_sparse_vector(), limit=3)
+
+        assert returned == results

@@ -1,17 +1,16 @@
-from src.rag.embeddings.bge_m3 import Embedding
-from src.rag.storage.base_vector_store import BaseVectorStorage,VectorSearchResult
+from src.rag.rag_schemas.search_filter import SearchFilter
+from src.rag.storage.base_vector_store import BaseVectorStorage,VectorSearchResult, SparseVector
 
 class SparseSearch:
     
-    def __init__(self, embedding: Embedding, vector_store: BaseVectorStorage):
+    def __init__(self, vector_store: BaseVectorStorage):
         
-        self.embedding = embedding
         self.vector_store = vector_store
         
-    async def search(self, query: str, limit: int) -> list[VectorSearchResult]:
+    async def search(self, vector: SparseVector, limit: int, filters: SearchFilter | None = None) -> list[VectorSearchResult]:
         
-        embedding_result = self.embedding.embed([query])[0]
         return await self.vector_store.search_sparse(
-            vector=embedding_result.sparse,
+            vector=vector,
             limit=limit,
+            filters=filters
         )
