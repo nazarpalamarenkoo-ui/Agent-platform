@@ -84,7 +84,9 @@ class TestNormalize:
             make_chunk(f"{header}\nunique content three here", 2),
         ]
 
-        boilerplate = normalizer._find_boilerplate(chunks)
+        # NOTE: the real Normalizer exposes this as a *public* method
+        # (`find_boilerplate`), not `_find_boilerplate`.
+        boilerplate = normalizer.find_boilerplate(chunks)
 
         assert header in boilerplate
 

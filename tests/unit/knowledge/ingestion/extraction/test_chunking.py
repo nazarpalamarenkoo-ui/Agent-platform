@@ -5,6 +5,7 @@ import pytest
 from src.knowledge.ingestion.extraction.chunking import Chuncking
 from src.knowledge.ingestion.extraction.base_extractor import ExtractedDocument
 from src.knowledge.documents_schema.knowledge_chunck import KnowledgeChunk
+from src.knowledge.documents_schema.text_span import TextSpan
 
 
 class FakeEncoder:
@@ -35,8 +36,13 @@ def chunker(fake_encoder):
         return Chuncking(chunk_size=10, overlap=2)
 
 
-def make_extracted(text, metadata=None):
-    return ExtractedDocument(text=text, metadata=metadata or {})
+def make_extracted(text, metadata=None, spans=None):
+    # NOTE: real chunking.py resolves page/section/chapter/heading metadata
+    # from `extracted.spans` (a list of TextSpan objects), not from a
+    # "pages" key inside `metadata`. `spans` defaults to an empty list to
+    # match how TextExtractor constructs ExtractedDocument without any
+    # spans at all.
+    return ExtractedDocument(text=text, metadata=metadata or {}, spans=spans or [])
 
 
 class TestChunckingInit:
@@ -115,23 +121,25 @@ class TestChunk:
 
         assert all(c.metadata["source"] == "doc.txt" for c in result)
 
-    def test_page_metadata_none_when_no_pages_present(self, chunker):
+    def test_page_metadata_none_when_no_spans_present(self, chunker):
         text = "some content without page info"
         result = chunker.chunk(make_extracted(text, metadata={"source": "doc.txt"}))
 
         assert all(c.metadata["page"] is None for c in result)
 
-    def test_page_metadata_resolved_from_pages(self, chunker):
+    def test_page_metadata_resolved_from_spans(self, chunker):
         # chunk_size=10, overlap=2, step=8
         text = "0123456789ABCDEFGHIJ"  # 20 chars total
-        pages = [
-            {"page": 0, "text": "0123456789"},   # first 10 chars
-            {"page": 1, "text": "ABCDEFGHIJ"},    # next 10 chars
+        spans = [
+            TextSpan(page=0, section=None, chapter=None, heading=None, start_char=0, end_char=10),
+            TextSpan(page=1, section=None, chapter=None, heading=None, start_char=10, end_char=20),
         ]
-        result = chunker.chunk(make_extracted(text, metadata={"source": "doc.pdf", "pages": pages}))
+        result = chunker.chunk(
+            make_extracted(text, metadata={"source": "doc.pdf"}, spans=spans)
+        )
 
         assert result[0].metadata["page"] == 0
-        # later chunks that start past the first page's char range should
+        # later chunks that start past the first span's char range should
         # resolve to page 1
         assert result[-1].metadata["page"] == 1
 

@@ -1,4 +1,3 @@
-
 import re
 import unicodedata
 from collections import Counter
@@ -11,7 +10,7 @@ class Normalizer:
         self.min_lenght = min_lenght
         self.boilerplate_threshold = boilerplate_threshold
         
-    def _find_boilerplate(self, chunks: list[KnowledgeChunk]) -> set[str]:
+    def find_boilerplate(self, chunks: list[KnowledgeChunk]) -> set[str]:
         
         line_counts = Counter()
         
@@ -30,9 +29,10 @@ class Normalizer:
         
         return "\n".join(cleaned)
     
-    def normalize(self, chunks: list[KnowledgeChunk]) -> list[KnowledgeChunk]:
+    def normalize(self, chunks: list[KnowledgeChunk], boilerplate: set[str] | None = None) -> list[KnowledgeChunk]:
         
-        boilerplate = self._find_boilerplate(chunks)
+        if boilerplate is None:
+            boilerplate = self.find_boilerplate(chunks)
         
         result = []
         
@@ -48,5 +48,3 @@ class Normalizer:
             result.append(chunk.model_copy(update = {'text': text}))
             
         return result
-        
-        

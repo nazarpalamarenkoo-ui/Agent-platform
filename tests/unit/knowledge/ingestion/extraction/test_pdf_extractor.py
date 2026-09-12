@@ -50,7 +50,11 @@ class TestPdfExtractor:
         assert isinstance(result, ExtractedDocument)
         assert result.text == "Page one text\n\nPage two text"
 
-    def test_metadata_contains_page_count_pages_and_source(self):
+    def test_metadata_contains_page_count_and_source(self):
+        # NOTE: real pdf_extractor.py does NOT put a "pages" list into
+        # `metadata` - only `page_count` and `source`. Per-page character
+        # ranges are tracked separately via `result.spans` (a list of
+        # TextSpan, one per page).
         raw_doc = make_raw_document(source="https://example.com/report.pdf")
         fake_pdf = make_fake_pdf(["A", "B", "C"])
 
@@ -62,11 +66,23 @@ class TestPdfExtractor:
 
         assert result.metadata["page_count"] == 3
         assert result.metadata["source"] == "https://example.com/report.pdf"
-        assert result.metadata["pages"] == [
-            {"page": 0, "text": "A"},
-            {"page": 1, "text": "B"},
-            {"page": 2, "text": "C"},
-        ]
+        assert "pages" not in result.metadata
+
+    def test_spans_contain_one_entry_per_page_in_order(self):
+        raw_doc = make_raw_document()
+        fake_pdf = make_fake_pdf(["A", "B", "C"])
+
+        with patch(
+            "src.knowledge.ingestion.extraction.pdf_extractor.fitz.open",
+            return_value=fake_pdf,
+        ):
+            result = PdfExtractor().extract(raw_doc)
+
+        assert len(result.spans) == 3
+        assert [span.page for span in result.spans] == [0, 1, 2]
+        assert all(span.section is None for span in result.spans)
+        assert all(span.chapter is None for span in result.spans)
+        assert all(span.heading is None for span in result.spans)
 
     def test_handles_single_page_document(self):
         raw_doc = make_raw_document()
@@ -93,4 +109,4 @@ class TestPdfExtractor:
 
         assert result.text == ""
         assert result.metadata["page_count"] == 0
-        assert result.metadata["pages"] == []
+        assert result.spans == []
