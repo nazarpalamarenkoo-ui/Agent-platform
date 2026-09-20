@@ -14,11 +14,20 @@ def event_loop():
 
 
 import pytest_asyncio
+from unittest.mock import AsyncMock
+from fastapi import FastAPI
+from pydantic import BaseModel
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import NullPool
 from sqlalchemy import text
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+import enum
+import types
+import typing
+import uuid
+from datetime import date, datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from src.db.db_connection import Base
 from src.db.models.users import User
@@ -475,3 +484,105 @@ async def sample_tool_usage_event(db_session, sample_tool, sample_user, sample_c
     await db_session.commit()
     await db_session.refresh(event)
     return event
+
+
+@pytest.fixture
+def build_app():
+    def factory(router):
+        application = FastAPI()
+        application.include_router(router)
+        return application
+
+    return factory
+
+
+@pytest.fixture
+def app(request, build_app):
+    return build_app(request.module.ROUTER)
+
+
+@pytest.fixture
+def service(app, request):
+    mock = AsyncMock(spec=request.module.SERVICE_SPEC)
+    app.dependency_overrides[request.module.SERVICE_DEPENDENCY] = lambda: mock
+    return mock
+
+
+@pytest_asyncio.fixture
+async def client(app):
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://testserver") as http_client:
+        yield http_client
+
+
+SAMPLE_MOMENT = datetime(2025, 1, 1, tzinfo=timezone.utc)
+
+
+def _sample_value(annotation):
+    origin = typing.get_origin(annotation)
+    args = typing.get_args(annotation)
+    if origin is typing.Annotated:
+        return _sample_value(args[0])
+    if origin in (typing.Union, types.UnionType):
+        candidates = [arg for arg in args if arg is not type(None)]
+        return _sample_value(candidates[0]) if candidates else None
+    if origin is typing.Literal:
+        return args[0]
+    if origin in (list, set, frozenset, tuple):
+        return origin()
+    if origin is dict:
+        return {}
+    if annotation in (list, set, frozenset, tuple):
+        return annotation()
+    if annotation is dict:
+        return {}
+    if annotation is typing.Any:
+        return "sample-text"
+    if annotation is bool:
+        return True
+    if annotation is int:
+        return 1
+    if annotation is float:
+        return 1.0
+    if annotation is str:
+        return "sample-text"
+    if annotation is datetime:
+        return SAMPLE_MOMENT
+    if annotation is date:
+        return SAMPLE_MOMENT.date()
+    if annotation is uuid.UUID:
+        return uuid.uuid4()
+    if getattr(annotation, "__name__", "") == "EmailStr":
+        return "user@example.com"
+    if isinstance(annotation, type) and issubclass(annotation, enum.Enum):
+        return next(iter(annotation))
+    if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+        return SimpleNamespace(**_fake_values(annotation, {}))
+    if isinstance(annotation, type) and issubclass(annotation, str):
+        return "sample-text"
+    return None
+
+
+def _fake_values(schema, overrides):
+    values = {}
+    for name, field in schema.model_fields.items():
+        if name in overrides:
+            values[name] = overrides[name]
+        elif field.is_required():
+            values[name] = _sample_value(field.annotation)
+    for name, field in schema.model_fields.items():
+        if name in values:
+            for alias in (field.alias, field.validation_alias):
+                if isinstance(alias, str) and alias not in values:
+                    values[alias] = values[name]
+    for name, value in overrides.items():
+        values.setdefault(name, value)
+    return values
+
+
+@pytest.fixture
+def fake():
+    def build(schema, **overrides):
+        return SimpleNamespace(**_fake_values(schema, overrides))
+
+    return build
