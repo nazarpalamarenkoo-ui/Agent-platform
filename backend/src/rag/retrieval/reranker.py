@@ -5,7 +5,7 @@ from src.rag.storage.base_vector_store import VectorSearchResult
 class Reranker:
 
     def __init__(self, top_n: int = 5):
-        self.model = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True)
+        self.model = FlagReranker('BAAI/bge-reranker-v2-m3', use_fp16=True, device='cuda')
         self.top_n = top_n
 
     def rerank(

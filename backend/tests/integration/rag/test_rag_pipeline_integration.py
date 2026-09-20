@@ -13,17 +13,13 @@ from src.rag.retrieval.dense_search import DenseSearch
 from src.rag.retrieval.sparse_search import SparseSearch
 from src.rag.retrieval.rrf import RRF
 from src.rag.retrieval.reranker import Reranker
-from src.rag.retrieval.retrieval import Retrieval
+from src.rag.retrieval.hybrid_retrieval import HybridRetrieval
 from src.rag.retrieval.query_encoder import QueryEncoder
 from src.rag.embeddings.bge_m3 import EmbeddingResult
 from src.rag.rag_schemas.search_filter import SearchFilter
 
 pytestmark = pytest.mark.integration
 
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
 
 def make_result(id_: str, score: float, text: str = "some text") -> VectorSearchResult:
     return VectorSearchResult(id=id_, score=score, payload={"text": text})
@@ -42,10 +38,6 @@ def make_embedding_result(
         ),
     )
 
-
-# ---------------------------------------------------------------------------
-# RRF
-# ---------------------------------------------------------------------------
 
 class TestRRF:
 
@@ -86,10 +78,6 @@ class TestRRF:
         assert rrf.fuse([], [], k=60) == []
         assert rrf.fuse([make_result("a", 1.0)], [], k=60)[0].id == "a"
 
-
-# ---------------------------------------------------------------------------
-# Reranker
-# ---------------------------------------------------------------------------
 
 class TestReranker:
 
@@ -144,12 +132,6 @@ class TestReranker:
         assert {r.score for r in reranked} == {0.0}
 
 
-# ---------------------------------------------------------------------------
-# DenseSearch
-# DenseSearch(vector_store) — no longer owns an embedding model.
-# Caller passes a pre-encoded DenseVector to .search().
-# ---------------------------------------------------------------------------
-
 class TestDenseSearch:
 
     @pytest.fixture
@@ -199,11 +181,6 @@ class TestDenseSearch:
         assert results == []
 
 
-# ---------------------------------------------------------------------------
-# SparseSearch
-# Same structural change as DenseSearch — no embedding, accepts SparseVector.
-# ---------------------------------------------------------------------------
-
 class TestSparseSearch:
 
     @pytest.fixture
@@ -252,14 +229,6 @@ class TestSparseSearch:
 
         assert results == []
 
-
-# ---------------------------------------------------------------------------
-# Retrieval
-# Now owns a QueryEncoder. retrieve() encodes the query string first,
-# then passes the resulting dense/sparse vectors into DenseSearch/SparseSearch.
-# Both search calls also receive the optional filters argument.
-# ---------------------------------------------------------------------------
-
 class TestRetrieval:
 
     @pytest.fixture
@@ -300,7 +269,7 @@ class TestRetrieval:
 
     @pytest.fixture
     def retrieval(self, mock_query_encoder, dense_search, sparse_search, reranker):
-        return Retrieval(
+        return HybridRetrieval(
             query_encoder=mock_query_encoder,
             sparse_search=sparse_search,
             dense_search=dense_search,
@@ -358,7 +327,7 @@ class TestRetrieval:
         self, mock_query_encoder, dense_search, sparse_search, reranker
     ):
         rrf = MagicMock(fuse=MagicMock(return_value=[]))
-        retrieval = Retrieval(
+        retrieval = HybridRetrieval(
             query_encoder=mock_query_encoder,
             sparse_search=sparse_search,
             dense_search=dense_search,
@@ -384,7 +353,7 @@ class TestRetrieval:
         failing_dense = MagicMock(
             search=AsyncMock(side_effect=RuntimeError("qdrant down"))
         )
-        retrieval = Retrieval(
+        retrieval = HybridRetrieval(
             query_encoder=mock_query_encoder,
             sparse_search=sparse_search,
             dense_search=failing_dense,
@@ -394,11 +363,6 @@ class TestRetrieval:
 
         with pytest.raises(RuntimeError, match="qdrant down"):
             await retrieval.retrieve(query="q", limit=10, top_n=3)
-
-
-# ---------------------------------------------------------------------------
-# QdrantVectorSearch
-# ---------------------------------------------------------------------------
 
 class TestQdrantVectorSearch:
 

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from src.rag.retrieval.retrieval import Retrieval
+from src.rag.retrieval.hybrid_retrieval import HybridRetrieval
 from src.rag.rag_schemas.search_filter import SearchFilter
 from src.rag.storage.base_vector_store import DenseVector, SparseVector, VectorSearchResult
 
@@ -60,7 +60,7 @@ def mock_reranker():
 
 @pytest.fixture
 def retrieval(mock_query_encoder, mock_sparse_search, mock_dense_search, mock_rrf, mock_reranker):
-    return Retrieval(
+    return HybridRetrieval(
         query_encoder=mock_query_encoder,
         sparse_search=mock_sparse_search,
         dense_search=mock_dense_search,

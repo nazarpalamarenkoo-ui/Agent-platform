@@ -8,7 +8,7 @@ from src.rag.retrieval.reranker import Reranker
 from src.rag.storage.base_vector_store import VectorSearchResult
 from src.rag.rag_schemas.search_filter import SearchFilter
 
-class Retrieval:
+class HybridRetrieval:
 
     def __init__(
         self,

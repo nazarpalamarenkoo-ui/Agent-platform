@@ -45,5 +45,6 @@ class KnowledgePackRepository(BaseRepository[KnowledgePack]):
             select(KnowledgePack)
             .options(selectinload(KnowledgePack.documents))
             .where(KnowledgePack.id == pack_id)
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()

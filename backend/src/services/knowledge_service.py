@@ -12,7 +12,7 @@ from src.knowledge.acquisition.orchestration import Orchestrator
 from src.knowledge.ingestion.loaders.registry import LoaderRegistry
 from src.rag.storage.base_vector_store import VectorSearchResult
 from src.rag.rag_schemas.search_filter import SearchFilter
-from src.rag.retrieval.retrieval import Retrieval
+from src.rag.retrieval.hybrid_retrieval import HybridRetrieval
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ class KnowledgeService:
         self,
         orchestrator: Orchestrator,
         ingestion_pipeline: IngestionPipeline,
-        retrieval: Retrieval,
+        retrieval: HybridRetrieval,
         document_repo: DocumentRepository,
         tag_repo: TagRepository,
         knowledge_domain_repo: KnowledgeDomainRepository,    
