@@ -24,7 +24,10 @@ class TestRerankerInit:
         with patch("src.rag.retrieval.reranker.FlagReranker") as mock_model_cls:
             Reranker()
 
-        mock_model_cls.assert_called_once_with("BAAI/bge-reranker-v2-m3", use_fp16=True)
+        mock_model_cls.assert_called_once()
+        args, kwargs = mock_model_cls.call_args
+        assert args == ("BAAI/bge-reranker-v2-m3",)
+        assert kwargs["use_fp16"] is True
 
     def test_default_top_n_is_five(self):
         with patch("src.rag.retrieval.reranker.FlagReranker"):

@@ -1,0 +1,1130 @@
+[
+  {
+    "id": "q_001",
+    "query": "How can Broken Access Control be mitigated according to OWASP Top 10 2021?",
+    "knowledge_packs": ["owasp-top10"],
+    "relevant_chunk_ids": [
+      "1125642f-0a77-dddc-80b7-08a4073ef1cb"
+    ]
+  },
+  {
+    "id": "q_002",
+    "query": "What are the recommended practices for preventing Security Misconfiguration and vulnerable outdated components?",
+    "knowledge_packs": ["owasp-top10"],
+    "relevant_chunk_ids": [
+      "5c5fed48-2194-0169-f5fb-6dd0ccf547cc"
+    ]
+  },
+  {
+    "id": "q_003",
+    "query": "How does OWASP recommend preventing Server-Side Request Forgery (SSRF)?",
+    "knowledge_packs": ["owasp-top10"],
+    "relevant_chunk_ids": [
+      "009c4ed1-85dc-232c-4a44-acc06d9f3970"
+    ]
+  },
+  {
+    "id": "q_004",
+    "query": "How do you create a Qdrant collection that supports both dense and sparse vectors for hybrid search?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "4cdc6d86-231d-ba72-f0a6-8d90d43ed0b9"
+    ]
+  },
+  {
+    "id": "q_005",
+    "query": "What are the differences between dense and sparse search, and why can sparse search return no results while dense search still succeeds?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "6aeb69d7-3a3e-fba9-9e33-17ec2ebbe035"
+    ]
+  },
+  {
+    "id": "q_006",
+    "query": "How is Reciprocal Rank Fusion (RRF) implemented in Qdrant using the Universal Query API?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "6aeb69d7-3a3e-fba9-9e33-17ec2ebbe035"
+    ]
+  },
+  {
+    "id": "q_007",
+    "query": "What is the difference between RRF and Distribution-Based Score Fusion (DBSF), and when should hybrid search quality be evaluated?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "c11ce1a7-b1aa-f1e3-d98a-2c6951a0fcab",
+      "cbaac0ed-a8df-a01e-ebdc-bc0719c08fc9"
+    ]
+  },
+  {
+    "id": "q_008",
+    "query": "What is the difference between keyword search, dense vector search and hybrid search in RAG?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "e3026353-9f83-937c-2730-377ddea4bdb0",
+      "c78c8cda-6b20-571f-da1e-5164ee04ccd9"
+    ]
+  },
+  {
+    "id": "q_009",
+    "query": "How does Reciprocal Rank Fusion (RRF) combine keyword and semantic search results in a hybrid RAG pipeline?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "74a67d12-6200-7b10-af4b-fde98cc9c33f"
+    ]
+  },
+  {
+    "id": "q_010",
+    "query": "What is the role of reranking after hybrid retrieval, and why does RRF improve relevance and reduce hallucinations?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "74a67d12-6200-7b10-af4b-fde98cc9c33f"
+    ]
+  },
+  {
+    "id": "q_011",
+    "query": "How is the reciprocal rank score calculated, and what practical use cases does RRF have?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "7684945d-9ed7-809d-fe1f-804f0a3fd366",
+      "a136e80a-5232-66ec-d347-4cd4002b8591"
+    ]
+  },
+  {
+    "id": "q_012",
+    "query": "How does metadata filtering improve retrieval quality in a RAG pipeline?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "887cf696-154c-2a43-33b2-de70b5879aa4"
+    ]
+  },
+  {
+    "id": "q_013",
+    "query": "What is the difference between filtering before retrieval and reranking after retrieval?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "887cf696-154c-2a43-33b2-de70b5879aa4"
+    ]
+  },
+  {
+    "id": "q_014",
+    "query": "How should nested metadata be indexed and queried for document retrieval?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "46b087bd-4af6-9a87-190b-4ff646c37960"
+    ]
+  },
+  {
+    "id": "q_015",
+    "query": "How can metadata filtering be used to isolate tenants in a multi-tenant vector database?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "abd9205c-6f24-c215-b75d-e56367b9fb35"
+    ]
+  },
+  {
+    "id": "q_016",
+    "query": "What is the difference between hybrid search and Reciprocal Rank Fusion (RRF)?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "887cf696-154c-2a43-33b2-de70b5879aa4"
+    ]
+  },
+  {
+    "id": "q_017",
+    "query": "When should I use the Documents API versus the Vectors API for hybrid retrieval?",
+    "knowledge_packs": ["hybrid-retrieval"],
+    "relevant_chunk_ids": [
+      "887cf696-154c-2a43-33b2-de70b5879aa4"
+    ]
+  },
+  {
+    "id": "q_018",
+    "query": "How do Nested Loop, Hash Join and Merge Join differ, and when should each join algorithm be used?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": ["78717413-005d-249b-da87-baa62dad05b5"]
+  },
+  {
+    "id": "q_019",
+    "query": "When are Common Table Expressions preferable to subqueries, and do CTEs automatically improve SQL performance?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": ["78717413-005d-249b-da87-baa62dad05b5"]
+  },
+  {
+    "id": "q_020",
+    "query": "How can window functions be optimized using PARTITION BY and ORDER BY indexes?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": ["d0e93c1c-7265-ac1b-ab32-23a534d2d9f9"]
+  },
+  {
+    "id": "q_021",
+    "query": "How does table partitioning improve query performance through partition elimination?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": ["d0e93c1c-7265-ac1b-ab32-23a534d2d9f9"]
+  },
+  {
+    "id": "q_022",
+    "query": "What are the most common SQL optimization mistakes, and why do functions in the WHERE clause prevent index usage?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": ["0a23415a-879b-45d4-6b71-8b0bfea7bd72"]
+  },
+  {
+    "id": "q_023",
+    "query": "How can a financial reporting query be optimized from 42 seconds to under 3 seconds without upgrading hardware?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": ["0a23415a-879b-45d4-6b71-8b0bfea7bd72"]
+  },
+  {
+    "id": "q_024",
+    "query": "What is the difference between RANK(), DENSE_RANK() and ROW_NUMBER() in SQL window functions?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": ["d5f91b08-1cf2-a7a2-6b6f-79338ed32a5c"]
+  },
+  {
+    "id": "q_025",
+    "query": "How do running totals, moving averages and LAG/LEAD work with SQL window functions?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": ["83eec80f-2ebe-6953-f6bf-ee5374e1693d"]
+  },
+  {
+    "id": "q_026",
+    "query": "How do recursive CTEs traverse hierarchical data such as organizational charts?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": ["7d5a34b9-b89b-faf8-31b4-19b7d873b0ee"]
+  },
+  {
+    "id": "q_027",
+    "query": "What is sargability, and why does wrapping indexed columns in functions disable index usage?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": [
+      "7d5a34b9-b89b-faf8-31b4-19b7d873b0ee",
+      "2a1460c2-4adb-9c26-1e11-f2dcb5871ce7"
+    ]
+  },
+  {
+    "id": "q_028",
+    "query": "How do EXPLAIN and EXPLAIN ANALYZE help identify sequential scans, nested loops and query bottlenecks?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": [
+      "2a1460c2-4adb-9c26-1e11-f2dcb5871ce7",
+      "69f87660-5cd2-4d72-d9e7-e75db19ee6c4"
+    ]
+  },
+  {
+    "id": "q_029",
+    "query": "What indexing, partitioning and parallel processing techniques are recommended for optimizing large SQL workloads?",
+    "knowledge_packs": ["advanced-sql"],
+    "relevant_chunk_ids": [
+      "c0ca8e67-f530-6bd6-0d43-8a0b61046a80",
+      "cdd18a64-7cc0-bf4a-25a2-1a972000f3f9"
+    ]
+  },
+  {
+    "id": "q_030",
+    "query": "Why are timestamps unreliable for providing consistency guarantees in distributed systems?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "609cac15-f509-f08b-7e66-7cb8bcb7764a",
+      "1a061143-79d0-7687-0741-dcfd22bf2f5e"
+    ]
+  },
+  {
+    "id": "q_031",
+    "query": "How does Google Spanner handle clock uncertainty to provide stronger consistency guarantees?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "1a061143-79d0-7687-0741-dcfd22bf2f5e"
+    ]
+  },
+  {
+    "id": "q_032",
+    "query": "Why is leader election considered equivalent to distributed consensus in highly available systems?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "a579a7f2-7d3c-18a0-b2c4-1b35f4720aab",
+      "1a061143-79d0-7687-0741-dcfd22bf2f5e"
+    ]
+  },
+  {
+    "id": "q_033",
+    "query": "How does a leader-based architecture improve availability in replicated services?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "1a061143-79d0-7687-0741-dcfd22bf2f5e",
+      "dc8638de-7ea8-8ab0-d462-1fb7288c1a42"
+    ]
+  },
+  {
+    "id": "q_034",
+    "query": "Why is consensus usually not the throughput bottleneck in systems like GFS and Bigtable?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "1a061143-79d0-7687-0741-dcfd22bf2f5e"
+    ]
+  },
+  {
+    "id": "q_035",
+    "query": "What is a distributed barrier, and how does it synchronize computation phases in MapReduce?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "1a061143-79d0-7687-0741-dcfd22bf2f5e"
+    ]
+  },
+  {
+    "id": "q_036",
+    "query": "What is linearizability, and why is it stronger than eventual consistency?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": ["b50750a8-b884-e52f-2714-3f7f3524ecc7"]
+  },
+  {
+    "id": "q_037",
+    "query": "How does the CAP theorem explain the trade-off between consistency and availability during network partitions?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "210ad9dd-691b-f352-2e85-28cd40b12764",
+      "bf4bc414-f1b9-c330-64b4-1f3a0c2aaac3"
+    ]
+  },
+  {
+    "id": "q_038",
+    "query": "What is the difference between causal ordering, total ordering and Lamport timestamps?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": ["c5498dca-3b30-e85c-1b7b-13522176b50d"]
+  },
+  {
+    "id": "q_039",
+    "query": "How does total order broadcast relate to consensus and linearizable storage?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": ["551ce2e8-9d65-3688-9724-7550b00cd93a"]
+  },
+  {
+    "id": "q_040",
+    "query": "How does Two-Phase Commit (2PC) work, and why can coordinator failures block the system?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": ["35c5dfbd-ab6b-2293-eba5-aecaa3a8abad"]
+  },
+  {
+    "id": "q_041",
+    "query": "What is the difference between heterogeneous and database-internal distributed transactions?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": ["a7751ab9-1ad8-5e86-97e2-e897fd0f4086"]
+  },
+  {
+    "id": "q_042",
+    "query": "What properties must a fault-tolerant consensus algorithm satisfy?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": ["62597da5-4f35-de20-1f70-cdb6eeb23613"]
+  },
+  {
+    "id": "q_043",
+    "query": "How do epochs, quorums and leader election prevent multiple leaders in consensus protocols?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": ["0c0519d1-678d-2a67-2e24-ffbfc2d9bc47"]
+  },
+  {
+    "id": "q_044",
+    "query": "Why are ZooKeeper and etcd commonly used for coordination, service discovery and distributed leader election?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "be9aab78-645a-d228-1e69-7ff68a62dd40",
+      "59789309-0ab5-05f8-569f-cb0bf514f84b"
+    ]
+  },
+  {
+    "id": "q_045",
+    "query": "What is consensus in distributed systems, and why is it required for leader election and fault tolerance?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "670fbcd5-47f4-c11c-3b9d-dbc2fc09df43"
+    ]
+  },
+  {
+    "id": "q_046",
+    "query": "How do Paxos and Raft differ in terms of leader election, implementation complexity and production use?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "05961560-3245-0690-bad4-40149e0f2dd2"
+    ]
+  },
+  {
+    "id": "q_047",
+    "query": "What is Viewstamped Replication, and how does it compare to Raft and Paxos?",
+    "knowledge_packs": ["distributed-systems"],
+    "relevant_chunk_ids": [
+      "d64c8d50-ff76-a722-47ff-f65bafee0d84"
+    ]
+  },
+  {
+    "id": "q_048",
+    "query": "How should activation metadata be written so Claude selects the correct skill?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": ["4cf7184d-5e5c-d20b-59aa-6a8d5fde3325"]
+  },
+  {
+    "id": "q_049",
+    "query": "Why are exclusion clauses important in SKILL.md descriptions?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": ["2b0bff8e-c75b-2443-542c-f38376502242"]
+  },
+  {
+    "id": "q_050",
+    "query": "What is the Context Budget pattern and how does it reduce context window usage?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": ["2b0bff8e-c75b-2443-542c-f38376502242"]
+  },
+  {
+    "id": "q_051",
+    "query": "How does Progressive Disclosure organize large SKILL.md files using reference documents?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": ["e406b626-ba82-495e-acbf-639486a60b14"]
+  },
+  {
+    "id": "q_052",
+    "query": "Why should skill instructions explain the reasoning behind rules instead of relying on ALWAYS and NEVER statements?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": ["d180a565-290e-08a3-3884-d9d81f550a64"]
+  },
+  {
+    "id": "q_053",
+    "query": "When should Template Scaffold and in-skill examples be used for structured outputs?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": [
+      "d180a565-290e-08a3-3884-d9d81f550a64",
+      "c9f01886-4f48-e15c-e5ac-f836a0aae0f5"
+    ]
+  },
+  {
+    "id": "q_054",
+    "query": "How does the Self-Correcting Loop improve quality for generated code and documents?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": ["d6db3e06-7575-050a-0063-2be389cf9440"]
+  },
+  {
+    "id": "q_055",
+    "query": "What is the Plan-Validate-Execute pattern and when should it be used instead of direct execution?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": [
+      "d6db3e06-7575-050a-0063-2be389cf9440",
+      "6a0f838b-d4c8-6583-e57a-b71f76931b31"
+    ]
+  },
+  {
+    "id": "q_056",
+    "query": "What is the difference between Skills and Subagents in Cursor agent architecture?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": ["8c562d12-f2f8-1c12-1337-da627cefe287"]
+  },
+  {
+    "id": "q_057",
+    "query": "Why do coding agents perform best with limited context, tight constraints and verifiable outputs?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": ["44e966b6-7758-a66b-48dc-d3323961ddab"]
+  },
+  {
+    "id": "q_058",
+    "query": "How does an AGENTS.md file help distinguish preferred architectural patterns from legacy code?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": [
+      "8cee4ec6-dc07-e503-e44b-08246a94cee0",
+      "3b5d9cc1-9876-cef2-dce1-040bda5ac196"
+    ]
+  },
+  {
+    "id": "q_059",
+    "query": "Why should engineers design software for failure instead of only writing correct code?",
+    "knowledge_packs": ["skills-best-practices"],
+    "relevant_chunk_ids": ["840406ed-d567-bb7b-b8e9-855611f07664"]
+  },
+  {
+    "id": "q_060",
+    "query": "What is the difference between direct and indirect prompt injection attacks in LLM applications?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "918676d6-b0b4-5c20-85b3-3d582dcc7399",
+      "78f65757-f9b0-6fb1-cff0-74e14cb89138"
+    ]
+  },
+  {
+    "id": "q_061",
+    "query": "Why should retrieved documents always be treated as untrusted input in RAG systems?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "9b8c9bb6-1cbc-9283-6200-d6599623fd43",
+      "8ad95b68-e1bd-1371-9e75-c3a52db9319b"
+    ]
+  },
+  {
+    "id": "q_062",
+    "query": "How does prompt injection exploit the inability of language models to distinguish instructions from data?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "918676d6-b0b4-5c20-85b3-3d582dcc7399",
+      "7ce342ee-1d6a-c6f4-21f3-c24ac053b5f6"
+    ]
+  },
+  {
+    "id": "q_063",
+    "query": "What architectural techniques isolate system prompts from user-controlled content?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "c7abf9c2-8a49-4198-c613-6a7cfdec3ce9",
+      "1e75aa79-00a6-e7a8-3bac-bbb5811c8374"
+    ]
+  },
+  {
+    "id": "q_064",
+    "query": "How can RAG pipelines prevent malicious documents from hijacking model behavior through document injection?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "9b8c9bb6-1cbc-9283-6200-d6599623fd43",
+      "36ec3ae4-3ed2-febc-31e7-89877c8d1284"
+    ]
+  },
+  {
+    "id": "q_065",
+    "query": "What defense-in-depth strategy reduces the risk of prompt injection across retrieval and generation stages?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "5c0106da-564f-15a0-f728-6064667b2f49",
+      "5b9763e3-57eb-3d0d-29bd-4ddec03d202d"
+    ]
+  },
+  {
+    "id": "q_066",
+    "query": "What is prompt injection, and how can LangChain plug-ins turn it into RCE, SSRF or SQL injection?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "918676d6-b0b4-5c20-85b3-3d582dcc7399",
+      "a297981f-32f8-4c57-1fe4-b383aee662bf"
+    ]
+  },
+  {
+    "id": "q_067",
+    "query": "How does the classic 'IGNORE ALL PREVIOUS INSTRUCTIONS' attack override a chatbot's intended behavior?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "918676d6-b0b4-5c20-85b3-3d582dcc7399",
+      "7ce342ee-1d6a-c6f4-21f3-c24ac053b5f6"
+    ]
+  },
+  {
+    "id": "q_068",
+    "query": "Why are LangChain chains vulnerable while the core LangChain library itself is not?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "a297981f-32f8-4c57-1fe4-b383aee662bf",
+      "8205d72f-6d7b-df08-6b86-115258161073"
+    ]
+  },
+  {
+    "id": "q_069",
+    "query": "How does the llm_math chain lead to remote code execution through prompt injection?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "8205d72f-6d7b-df08-6b86-115258161073",
+      "37a5fa98-4c13-c8c2-4eb8-7c15d499c193"
+    ]
+  },
+  {
+    "id": "q_070",
+    "query": "What is prompt injection, and how can it escalate into RCE, SSRF, or SQL injection through LangChain chains?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "918676d6-b0b4-5c20-85b3-3d582dcc7399",
+      "a297981f-32f8-4c57-1fe4-b383aee662bf"
+    ]
+  },
+  {
+    "id": "q_071",
+    "query": "How does the classic 'IGNORE ALL PREVIOUS INSTRUCTIONS' attack override an LLM's intended behavior?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "918676d6-b0b4-5c20-85b3-3d582dcc7399",
+      "7ce342ee-1d6a-c6f4-21f3-c24ac053b5f6"
+    ]
+  },
+  {
+    "id": "q_072",
+    "query": "Why are LangChain chains vulnerable to prompt injection while the core LangChain library itself is not?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "a297981f-32f8-4c57-1fe4-b383aee662bf",
+      "8205d72f-6d7b-df08-6b86-115258161073"
+    ]
+  },
+  {
+    "id": "q_073",
+    "query": "How does the llm_math chain become vulnerable to remote code execution through prompt injection?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "8205d72f-6d7b-df08-6b86-115258161073",
+      "37a5fa98-4c13-c8c2-4eb8-7c15d499c193"
+    ]
+  },
+  {
+    "id": "q_074",
+    "query": "How can APIChain and SQLDatabaseChain be exploited using server-side request forgery and SQL injection?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "37a5fa98-4c13-c8c2-4eb8-7c15d499c193",
+      "d26f5ca0-f16c-3c48-a50b-8ff3c7934e62"
+    ]
+  },
+  {
+    "id": "q_075",
+    "query": "What defense-in-depth practices reduce prompt injection risk when connecting LLMs to external services?",
+    "knowledge_packs": ["prompt-injection-robustness"],
+    "relevant_chunk_ids": [
+      "d26f5ca0-f16c-3c48-a50b-8ff3c7934e62",
+      "f56d2948-fbba-a7d3-d87c-8c9c197e2dd3"
+    ]
+  },
+  {
+    "id": "q_076",
+    "query": "What is the C4 Model, and what are its four hierarchical levels?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": [
+      "4d000a2b-2bd9-8728-dc36-4d4599c8dee8",
+      "456f6c0e-afef-acf9-157b-84badc0f6871"
+    ]
+  },
+  {
+    "id": "q_077",
+    "query": "Why is the C4 Model considered notation-independent and tool-independent for software architecture?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": ["4d000a2b-2bd9-8728-dc36-4d4599c8dee8"]
+  },
+  {
+    "id": "q_078",
+    "query": "What supporting diagrams complement the four primary C4 diagrams?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": ["4d000a2b-2bd9-8728-dc36-4d4599c8dee8"]
+  },
+  {
+    "id": "q_079",
+    "query": "Who created the C4 Model, and what problem was it designed to solve?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": [
+      "456f6c0e-afef-acf9-157b-84badc0f6871",
+      "4d000a2b-2bd9-8728-dc36-4d4599c8dee8"
+    ]
+  },
+  {
+    "id": "q_084",
+    "query": "What are the four abstraction levels of the C4 Model, and what does each diagram represent?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": [
+      "456f6c0e-afef-acf9-157b-84badc0f6871",
+      "9f4f36bf-5ae5-db82-f454-8023ad074ba5"
+    ]
+  },
+  {
+    "id": "q_085",
+    "query": "How do Context and Container diagrams differ in purpose, audience, and architectural detail?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": [
+      "456f6c0e-afef-acf9-157b-84badc0f6871",
+      "a3b8843d-6526-ff15-0a61-9e6fbabc3004"
+    ]
+  },
+  {
+    "id": "q_086",
+    "query": "When should Component and Code diagrams be introduced instead of stopping at Context and Container diagrams?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": [
+      "a3b8843d-6526-ff15-0a61-9e6fbabc3004",
+      "d7cc0459-6651-082a-09c0-44101f90ded5"
+    ]
+  },
+  {
+    "id": "q_087",
+    "query": "What are the main advantages, maintenance costs, and architectural trade-offs of using the C4 Model?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": [
+      "9f4f36bf-5ae5-db82-f454-8023ad074ba5",
+      "a3b8843d-6526-ff15-0a61-9e6fbabc3004"
+    ]
+  },
+  {
+    "id": "q_088",
+    "query": "How do you create C4 diagrams in draw.io using the built-in C4 shape library?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": ["a3b8843d-6526-ff15-0a61-9e6fbabc3004"]
+  },
+  {
+    "id": "q_089",
+    "query": "What metadata can be attached to C4 shapes in draw.io, and how is it displayed?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": ["a3b8843d-6526-ff15-0a61-9e6fbabc3004"]
+  },
+  {
+    "id": "q_090",
+    "query": "What additional draw.io features make C4 models easier to navigate and maintain across multiple diagrams?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": ["d7cc0459-6651-082a-09c0-44101f90ded5"]
+  },
+  {
+    "id": "q_091",
+    "query": "How can smart labels and placeholders automatically distinguish in-scope and out-of-scope systems in C4 diagrams?",
+    "knowledge_packs": ["uml-c4-modeling"],
+    "relevant_chunk_ids": [
+      "d7cc0459-6651-082a-09c0-44101f90ded5",
+      "971a6c71-5425-c05f-d725-41d2a71b5555"
+    ]
+  },
+  {
+    "id": "q_092",
+    "query": "What is the difference between imperative and declarative deployment in Kubernetes, and why is declarative mode preferred for production?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "22eea80f-c2e1-cc39-f708-8bc8a3d8e7b9",
+      "5500ad24-6dac-42c9-5bbc-36c35a730742"
+    ]
+  },
+  {
+    "id": "q_093",
+    "query": "How do Kubernetes clusters, master nodes, and worker nodes divide responsibilities inside a cluster?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "22eea80f-c2e1-cc39-f708-8bc8a3d8e7b9"
+    ]
+  },
+  {
+    "id": "q_094",
+    "query": "What operational capabilities does Kubernetes provide for running production containerized applications, including scheduling, self-healing, service discovery, and rolling updates?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "7a94de35-b676-a43a-9517-28b212109d13",
+      "22eea80f-c2e1-cc39-f708-8bc8a3d8e7b9"
+    ]
+  },
+  {
+    "id": "q_095",
+    "query": "How do you deploy and expose a simple application in Kubernetes using kubectl?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "5500ad24-6dac-42c9-5bbc-36c35a730742",
+      "c32d3812-16b2-f27f-1793-718fe0d5b28c"
+    ]
+  },
+  {
+    "id": "q_096",
+    "query": "Why is Kubernetes considered complementary to Docker rather than a competing platform?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "584d296b-0c7a-cb02-5fbd-eeb8de2d1cf4",
+      "903f5d1b-da0e-13e5-ae3c-60cda5793e32"
+    ]
+  },
+  {
+    "id": "q_097",
+    "query": "What components make up the Kubernetes control plane, and what does each component do?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "99a255cf-84a1-84c3-8c13-8a53991f83ab",
+      "f0411bd4-a053-73af-68fd-5c47033d8fbb"
+    ]
+  },
+  {
+    "id": "q_098",
+    "query": "How do Pods, Deployments, ReplicaSets, ConfigMaps, and Secrets differ as Kubernetes objects?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "f0411bd4-a053-73af-68fd-5c47033d8fbb",
+      "d2d6060c-8213-a685-6ac2-4d982e13f111"
+    ]
+  },
+  {
+    "id": "q_099",
+    "query": "How do Kubernetes networking and autoscaling work together to provide resilient cloud-native applications?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "d2d6060c-8213-a685-6ac2-4d982e13f111",
+      "cdcc1681-6370-68a2-82a9-c57c1be5399c"
+    ]
+  },
+  {
+    "id": "q_100",
+    "query": "What is the difference between containerization and orchestration, and why does Kubernetes solve a different problem than Docker?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "577c18b7-ee3d-01f6-c92b-1b9d32661b3d",
+      "35a85708-42d8-e5e3-0b59-a89d5f08fc28"
+    ]
+  },
+  {
+    "id": "q_101",
+    "query": "What are the five core functions of Kubernetes orchestration, and how are they implemented through scheduling, autoscaling, self-healing, service discovery, and rolling updates?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "577c18b7-ee3d-01f6-c92b-1b9d32661b3d",
+      "35a85708-42d8-e5e3-0b59-a89d5f08fc28",
+      "cd66d7da-9052-99e2-dd4f-b3db0ea6b8ed"
+    ]
+  },
+  {
+    "id": "q_102",
+    "query": "How do Kubernetes Services, CoreDNS, kube-proxy, and Ingress provide service discovery and internal load balancing?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "cd66d7da-9052-99e2-dd4f-b3db0ea6b8ed",
+      "0a63a0b8-cbeb-1034-800c-617d5584593f"
+    ]
+  },
+  {
+    "id": "q_103",
+    "query": "What criteria should be considered before adopting Kubernetes for a production environment, and when is its orchestration model justified?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "d0e5b466-8e52-4484-ef20-e922788e4ccf",
+      "b5f2ab28-799b-b735-4db4-eac1c0198429"
+    ]
+  },
+  {
+    "id": "q_104",
+    "query": "What is Kubernetes, and why is it considered the standard platform for container orchestration?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "7a94de35-b676-a43a-9517-28b212109d13",
+      "b33d4756-0859-c3cc-9dfe-fb0ed50d52a7"
+    ]
+  },
+  {
+    "id": "q_105",
+    "query": "How does Kubernetes provide self-healing, automatic rollbacks, and resilient application management?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "7a94de35-b676-a43a-9517-28b212109d13"
+    ]
+  },
+  {
+    "id": "q_106",
+    "query": "How do Pods, service discovery, DNS, and load balancing enable communication between Kubernetes applications?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "7a94de35-b676-a43a-9517-28b212109d13",
+      "d2d6060c-8213-a685-6ac2-4d982e13f111"
+    ]
+  },
+  {
+    "id": "q_107",
+    "query": "What infrastructure capabilities make Kubernetes suitable for on-premises, hybrid cloud, and public cloud deployments?",
+    "knowledge_packs": ["container-orchestration"],
+    "relevant_chunk_ids": [
+      "7a94de35-b676-a43a-9517-28b212109d13",
+      "584d296b-0c7a-cb02-5fbd-eeb8de2d1cf4"
+    ]
+  },
+  {
+  "id": "q_108",
+  "query": "Why is isolation essential in unit testing, and how do test-driven development and dependency injection support it?",
+  "knowledge_packs": ["unit-testing"],
+  "relevant_chunk_ids": ["c120c147-82e8-3284-2850-0a7de8154f37"]
+  },
+  {
+    "id": "q_109",
+    "query": "What role do mocks and stubs play in managing external dependencies during unit testing, and why do CI/CD pipelines automate this process?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["88e078c0-78c0-ccca-e5e9-aa80f6251957"]
+  },
+  {
+    "id": "q_110",
+    "query": "What test coverage percentage should teams aim for, and why is a clean teardown procedure important after unit tests run?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["1275547f-48f9-f5ad-e3bc-dd134c0dc493"]
+  },
+  {
+    "id": "q_111",
+    "query": "How does the AAA (Arrange-Act-Assert) pattern structure a unit test, and why is naming convention important for test maintainability?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["88e078c0-78c0-ccca-e5e9-aa80f6251957"]
+  },
+  {
+    "id": "q_112",
+    "query": "What are the AWS Well-Architected security design principles for implementing a strong identity foundation and least privilege?",
+    "knowledge_packs": ["aws-architecture-patterns"],
+    "relevant_chunk_ids": ["a026dde1-2883-4913-0f32-f355b75779ae"]
+  },
+  {
+    "id": "q_113",
+    "query": "Why does AWS recommend applying security at all layers through a defense-in-depth approach?",
+    "knowledge_packs": ["aws-architecture-patterns"],
+    "relevant_chunk_ids": ["a026dde1-2883-4913-0f32-f355b75779ae"]
+  },
+  {
+    "id": "q_114",
+    "query": "What is the ReAct approach, and how does it combine reasoning traces with task-specific actions in language models?",
+    "knowledge_packs": ["agent-reAct-pattern"],
+    "relevant_chunk_ids": [
+      "9fb7be40-3ca0-7469-4fa5-dadad7b6d25e",
+      "d2595a2b-bc92-c64b-a755-1978df8004dc"
+    ]
+  },
+  {
+    "id": "q_115",
+    "query": "How does ReAct overcome hallucination and error propagation compared to chain-of-thought reasoning alone?",
+    "knowledge_packs": ["agent-reAct-pattern"],
+    "relevant_chunk_ids": [
+      "9fb7be40-3ca0-7469-4fa5-dadad7b6d25e",
+      "d2595a2b-bc92-c64b-a755-1978df8004dc"
+    ]
+  },
+  {
+    "id": "q_116",
+    "query": "How much does ReAct outperform imitation and reinforcement learning methods on ALFWorld and WebShop benchmarks?",
+    "knowledge_packs": ["agent-reAct-pattern"],
+    "relevant_chunk_ids": ["9fb7be40-3ca0-7469-4fa5-dadad7b6d25e"]
+  },
+  {
+    "id": "q_117",
+    "query": "What REST API endpoints exist for listing, creating, updating and merging GitHub pull requests?",
+    "knowledge_packs": ["github-mcp"],
+    "relevant_chunk_ids": ["b85505b5-d2f1-83f0-a09a-fe36d5bf2cce"]
+  },
+  {
+    "id": "q_118",
+    "query": "How do you dismiss or submit a review for a GitHub pull request through the REST API, and what endpoints manage stacked pull requests?",
+    "knowledge_packs": ["github-mcp"],
+    "relevant_chunk_ids": ["58ba302a-5963-598e-0561-a86852ff6489"]
+  },
+  {
+    "id": "q_119",
+    "query": "What CloudFormation best practices help organize stacks by lifecycle and ownership?",
+    "knowledge_packs": ["aws-architecture-patterns"],
+    "relevant_chunk_ids": ["8227f6c1-222c-1362-bd4f-31dd2639f5c1"]
+  },
+  {
+    "id": "q_120",
+    "query": "Why is a consistent resource tagging strategy important in CloudFormation templates?",
+    "knowledge_packs": ["aws-architecture-patterns"],
+    "relevant_chunk_ids": ["d6c42a8c-cb9d-7180-274b-d290bcb56255"]
+  },
+  {
+    "id": "q_121",
+    "query": "How do change sets and stack policies help protect CloudFormation resources from unintended updates?",
+    "knowledge_packs": ["aws-architecture-patterns"],
+    "relevant_chunk_ids": ["942ff786-7c7d-c53e-4c0b-18984e4df518"]
+  },
+  {
+    "id": "q_122",
+    "query": "How does AWS CDK generate CloudFormation templates from TypeScript, Python or Java code?",
+    "knowledge_packs": ["aws-architecture-patterns"],
+    "relevant_chunk_ids": ["c12ac816-448a-6dbc-5680-70742055817b"]
+  },
+  {
+    "id": "q_123",
+    "query": "How does CloudFormation validate templates for JSON/YAML syntax and organization policy compliance using cfn-guard?",
+    "knowledge_packs": ["aws-architecture-patterns"],
+    "relevant_chunk_ids": ["9ff8af5e-896f-3c62-fdc7-803d02292271"]
+  },
+  {
+    "id": "q_124",
+    "query": "How does the ReAct framework interleave reasoning traces and actions to interface with external sources?",
+    "knowledge_packs": ["agent-reAct-pattern"],
+    "relevant_chunk_ids": ["426db8b0-a2a8-5cea-7e21-14869af77a36"]
+  },
+  {
+    "id": "q_125",
+    "query": "How is a ReAct agent initialized in LangChain using Google Serper and an LLM math tool?",
+    "knowledge_packs": ["agent-reAct-pattern"],
+    "relevant_chunk_ids": ["5aa9de86-7320-abfb-9931-fc21c2c8ffed"]
+  },
+  {
+    "id": "q_126",
+    "query": "What does a task-solving trajectory with Thought, Action and Observation steps look like in ReAct?",
+    "knowledge_packs": ["agent-reAct-pattern"],
+    "relevant_chunk_ids": ["adb3c7b8-0ed1-80bf-d1f6-31c6059e7fca"]
+  },
+  {
+    "id": "q_127",
+    "query": "Why can't you rely on simple equality checks to evaluate non-deterministic LLM outputs?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["50044ccd-2671-0903-43b1-030530aad84c"]
+  },
+  {
+    "id": "q_128",
+    "query": "What is perplexity, and how does F1 score balance precision and recall in LLM evaluation?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["c49b391c-5173-392a-ea84-75e381b97349"]
+  },
+  {
+    "id": "q_129",
+    "query": "What does the TruthfulQA benchmark test, and why is it relevant for minimizing hallucinations?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["7dc6b502-4241-39ad-e706-6731eeb4f16a"]
+  },
+  {
+    "id": "q_130",
+    "query": "What do HumanEval and GSM8K benchmarks measure in LLM evaluation?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["8caea78d-a3e6-572b-4736-d8027f80f9e4"]
+  },
+  {
+    "id": "q_131",
+    "query": "Why does binary or categorical scoring produce more reliable results than numerical scales for LLM judges?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["d7904cee-01df-5447-9aac-83a60d7f494f"]
+  },
+  {
+    "id": "q_132",
+    "query": "What six dimensions should you consider when choosing an LLM evaluation platform?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["32af9ec7-3c53-2f83-76b3-ad4abc43ab96"]
+  },
+  {
+    "id": "q_133",
+    "query": "What happens the moment a team discovers their LLM feature produced a confident but completely wrong answer?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["62c9af17-2b02-8f46-6461-5226b9cf3c75"]
+  },
+  {
+    "id": "q_134",
+    "query": "What are the three components of an evaluation framework: test dataset, success criterion and evaluator?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["c4e4c542-03e1-f6be-9a15-fa160fbaa60d"]
+  },
+  {
+    "id": "q_135",
+    "query": "What are position bias and verbosity bias in LLM-as-judge evaluation, and how can they be mitigated?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["e94cb06d-6d16-422a-236f-ced973181504"]
+  },
+  {
+    "id": "q_136",
+    "query": "How does the GLUE benchmark evaluate natural language understanding in LLMs?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["9408bd5a-cd91-d2fd-d9f1-43ec19eb726c"]
+  },
+  {
+    "id": "q_137",
+    "query": "What is benchmark saturation, and why do LLM benchmarks need to evolve as models outperform humans?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["56d2b91b-5a71-2e72-1b2e-ec9a3e0ba094"]
+  },
+  {
+    "id": "q_138",
+    "query": "How can out-of-distribution tests and paraphrasing help detect LLM benchmark overfitting?",
+    "knowledge_packs": ["llm-evaluation-fundamentals"],
+    "relevant_chunk_ids": ["a8169eb6-08f7-1e06-8722-b8fbb9f4d857"]
+  },
+  {
+    "id": "q_139",
+    "query": "What are the benefits of writing unit tests, and how do they facilitate good design?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["a66cace5-9622-2878-56c5-84c11a939835"]
+  },
+  {
+    "id": "q_140",
+    "query": "How does writing unit tests naturally decouple tightly coupled code?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["6348f8ba-b29c-7ffa-c98d-e316afbc7f95"]
+  },
+  {
+    "id": "q_141",
+    "query": "How does the Arrange-Act-Assert pattern structure a C# unit test using xUnit?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["9867738b-855c-0173-ccaf-2b6410fa557b"]
+  },
+  {
+    "id": "q_142",
+    "query": "Why does a unit test that depends on the day of the week produce flaky, non-deterministic results?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["41fd4d1d-f4f9-638a-0cca-2b4fe70ee09b"]
+  },
+  {
+    "id": "q_143",
+    "query": "What is mock testing, and how does it isolate code from real external components?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["42a540de-66d4-6db8-603a-d09c0ee0e5dc"]
+  },
+  {
+    "id": "q_144",
+    "query": "What are the different types of mock testing, such as function mocking?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["753babba-416b-5779-b8fa-bfefd8d74b50"]
+  },
+  {
+    "id": "q_145",
+    "query": "What are the key differences between mock testing and traditional unit testing?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["e008b5fc-0182-6d8b-8da7-1ec87949465f"]
+  },
+  {
+    "id": "q_146",
+    "query": "What best practices ensure mock testing results stay accurate compared to real components?",
+    "knowledge_packs": ["unit-testing"],
+    "relevant_chunk_ids": ["873e4aa7-5706-a2ed-7fa1-c3007d56f057"]
+  },
+  {
+    "id": "q_147",
+    "query": "What is a data pipeline, and how does it move raw data into structured, usable formats?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["e7eab001-7ee9-f1ad-e931-11c74a2ca51e"]
+  },
+  {
+    "id": "q_148",
+    "query": "How does Change Data Capture (CDC) reduce load compared to polling entire tables on a schedule?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["e9d00027-9eee-a551-5c70-add4f4fff084"]
+  },
+  {
+    "id": "q_149",
+    "query": "How does the medallion architecture organize data into Bronze, Silver and Gold layers to manage schema evolution?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["81994a34-9ce0-c044-f01b-6fafdce5d0f1"]
+  },
+  {
+    "id": "q_150",
+    "query": "How does tiering hot and cold data reduce storage costs without degrading query performance?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["205a3675-7c76-2307-763b-014fbf0006c2"]
+  },
+  {
+    "id": "q_151",
+    "query": "What is data pipeline architecture, and what role does the modern data stack play in it?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["0c75173b-8734-6ce2-6d31-158de1e00a26"]
+  },
+  {
+    "id": "q_152",
+    "query": "How did cloud computing adoption around 2017 decouple storage from compute in modern data stacks?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["44cff472-ec8a-51eb-53e7-0a571130f234"]
+  },
+  {
+    "id": "q_153",
+    "query": "How is BlaBlaCar's data pipeline architecture structured as part of its data mesh implementation?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["7451722a-7703-4c57-9a0a-9bc347171356"]
+  },
+  {
+    "id": "q_154",
+    "query": "What is the difference between batch ETL and streaming ETL, and what use cases fit each?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["bf08b09c-8440-c401-2b7d-9622d85a1c59"]
+  },
+  {
+    "id": "q_155",
+    "query": "How does streaming ETL process data continuously as events occur instead of on a schedule?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["9465d465-7a6c-4eb8-b1d2-20780c2f7d23"]
+  },
+  {
+    "id": "q_156",
+    "query": "What is the Kappa architecture, and how does it simplify streaming pipelines compared to Lambda architecture?",
+    "knowledge_packs": ["data-pipelines"],
+    "relevant_chunk_ids": ["498f6e26-7d35-241a-3d5f-30b8fe513561"]
+  },
+  {
+    "id": "q_157",
+    "query": "What does the GitHub REST API return when you receive a 403 Forbidden due to exceeding a rate limit?",
+    "knowledge_packs": ["github-mcp"],
+    "relevant_chunk_ids": ["e3f9e661-cb53-0faa-47db-57cf8db73eba"]
+  },
+  {
+    "id": "q_158",
+    "query": "What do the 'missing', 'missing_field' and 'invalid' error codes mean in GitHub API responses?",
+    "knowledge_packs": ["github-mcp"],
+    "relevant_chunk_ids": ["5bd19b1f-bea3-2f37-feb7-65541cac4153"]
+  }
+]
