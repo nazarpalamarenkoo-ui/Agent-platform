@@ -20,5 +20,6 @@ from . import (
     tool_domain,
     tool_usage_events,
     tools_definition,
-    users
+    users,
+    discovered_document
 )

@@ -1,6 +1,10 @@
+import uuid
+from datetime import datetime, timezone
+
 import pytest
 import pytest_asyncio
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import select
+from sqlalchemy.exc import DataError, IntegrityError, StatementError
 
 from src.db.models.users import User
 from src.db.models.agent_profiles import AgentProfile
@@ -25,10 +29,14 @@ from src.db.models.document_chunks import DocumentChunk
 from src.db.models.document_tags import DocumentTag
 from src.db.models.skill_usage_events import SkillUsageEvent
 from src.db.models.tool_usage_events import ToolUsageEvent
+from src.db.models.discovered_document import DiscoveredDocument
 from src.db.enums.document_status import DocumentStatus
 from src.db.enums.document_type import DocumentType
+from src.db.enums.discovery_type import DiscoveredDocumentDecision
+from src.schemas.discovered_document import DiscoveredDocumentCreate
 
 pytestmark = pytest.mark.unit
+
 
 async def test_user_creation(db_session):
     user = User(username="john", email="john@example.com", password_hash="hashed")
@@ -378,7 +386,7 @@ async def test_deleting_user_cascades_config_bundles(db_session, sample_user, sa
     result = await db_session.get(ConfigBundle, sample_config_bundle.id, populate_existing=True)
     assert result is None
 
-    
+
 async def test_deleting_agent_profile_cascades_config_bundles(db_session, sample_agent_profile, sample_config_bundle):
     await db_session.delete(sample_agent_profile)
     await db_session.commit()
@@ -424,8 +432,9 @@ async def test_deleting_user_cascades_token_usage_events(db_session, sample_user
     result = await db_session.get(TokenUsageEvent, sample_token_usage_event.id, populate_existing=True)
     assert result is None
 
+
 async def test_device_code_creation(db_session, sample_user):
-    from datetime import datetime, timedelta, timezone
+    from datetime import timedelta
 
     device_code = DeviceCode(
         device_code="XYZ1-2345",
@@ -443,7 +452,7 @@ async def test_device_code_creation(db_session, sample_user):
 
 
 async def test_device_code_value_must_be_unique(db_session, sample_device_code):
-    from datetime import datetime, timedelta, timezone
+    from datetime import timedelta
 
     duplicate = DeviceCode(
         device_code=sample_device_code.device_code,
@@ -524,7 +533,8 @@ async def test_deleting_agent_profile_cascades_skill_links(db_session, sample_ag
 
     remaining_skill = await db_session.get(Skill, skill_id)
     assert remaining_skill is not None
-    
+
+
 async def test_knowledge_domain_creation(db_session):
     domain = KnowledgeDomain(
         slug="testing-strategy",
@@ -723,7 +733,6 @@ async def test_deleting_document_cascades_document_tag_link(
     assert remaining_tag is not None
 
 
-
 async def test_document_creation_unclassified(db_session, sample_document):
     assert sample_document.id is not None
     assert sample_document.knowledge_pack_id is None
@@ -894,3 +903,247 @@ async def test_deleting_tool_cascades_usage_events(db_session, sample_tool_usage
 
     result = await db_session.get(ToolUsageEvent, event_id, populate_existing=True)
     assert result is None
+
+
+def unique_hash() -> str:
+    return uuid.uuid4().hex + uuid.uuid4().hex
+
+
+def make_discovered(**overrides) -> DiscoveredDocument:
+    values = dict(
+        url="https://example.com/guide",
+        url_hash=unique_hash(),
+        decision=DiscoveredDocumentDecision.ACCEPT,
+    )
+    values.update(overrides)
+    return DiscoveredDocument(**values)
+
+
+@pytest_asyncio.fixture
+async def sample_discovered_document(db_session):
+    document = make_discovered(
+        url="https://example.com/event-sourcing",
+        trust_score=0.825,
+        educational_score=0.9,
+        implementation_score=0.8,
+        authority_score=0.7,
+        document_category="tutorial",
+        reason="Covers snapshots and upcasting with a worked example.",
+    )
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+    return document
+
+
+async def test_discovered_document_creation(db_session, sample_discovered_document):
+    document = sample_discovered_document
+
+    assert document.id is not None
+    assert document.url == "https://example.com/event-sourcing"
+    assert len(document.url_hash) == 64
+    assert document.decision == DiscoveredDocumentDecision.ACCEPT
+    assert document.trust_score == pytest.approx(0.825)
+    assert document.educational_score == pytest.approx(0.9)
+    assert document.implementation_score == pytest.approx(0.8)
+    assert document.authority_score == pytest.approx(0.7)
+    assert document.document_category == "tutorial"
+    assert document.reason == "Covers snapshots and upcasting with a worked example."
+
+
+async def test_discovered_document_optional_fields_default_to_null(db_session):
+    document = make_discovered()
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+
+    assert document.trust_score is None
+    assert document.educational_score is None
+    assert document.implementation_score is None
+    assert document.authority_score is None
+    assert document.document_category is None
+    assert document.reason is None
+
+
+async def test_discovered_document_created_at_is_set_by_database(db_session, sample_discovered_document):
+    created_at = sample_discovered_document.created_at
+
+    assert created_at is not None
+    assert created_at.tzinfo is not None
+    assert abs((datetime.now(timezone.utc) - created_at).total_seconds()) < 300
+
+
+@pytest.mark.parametrize("decision", list(DiscoveredDocumentDecision))
+async def test_discovered_document_decision_round_trip(db_session, decision):
+    document = make_discovered(decision=decision)
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+
+    assert document.decision is decision
+
+
+async def test_discovered_document_can_be_filtered_by_decision(db_session):
+    accepted = make_discovered(decision=DiscoveredDocumentDecision.ACCEPT)
+    rejected = make_discovered(decision=DiscoveredDocumentDecision.REJECT)
+    db_session.add_all([accepted, rejected])
+    await db_session.commit()
+
+    result = await db_session.execute(
+        select(DiscoveredDocument.id).where(
+            DiscoveredDocument.decision == DiscoveredDocumentDecision.REJECT
+        )
+    )
+
+    assert result.scalars().all() == [rejected.id]
+
+
+async def test_discovered_document_invalid_decision_is_rejected(db_session):
+    document = make_discovered(decision="maybe")
+    db_session.add(document)
+
+    with pytest.raises(StatementError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_discovered_document_url_hash_must_be_unique(db_session, sample_discovered_document):
+    duplicate = make_discovered(
+        url="https://different.example.com/page",
+        url_hash=sample_discovered_document.url_hash,
+    )
+    db_session.add(duplicate)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_discovered_document_same_url_with_different_hash_is_allowed(
+    db_session, sample_discovered_document
+):
+    second = make_discovered(url=sample_discovered_document.url, url_hash=unique_hash())
+    db_session.add(second)
+    await db_session.commit()
+    await db_session.refresh(second)
+
+    assert second.id != sample_discovered_document.id
+
+
+@pytest.mark.parametrize("field", ["url", "url_hash", "decision"])
+async def test_discovered_document_required_fields_cannot_be_null(db_session, field):
+    document = make_discovered(**{field: None})
+    db_session.add(document)
+
+    with pytest.raises(IntegrityError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_discovered_document_url_hash_accepts_exactly_64_chars(db_session):
+    document = make_discovered(url_hash="f" * 64)
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+
+    assert document.url_hash == "f" * 64
+
+
+async def test_discovered_document_url_hash_longer_than_64_chars_is_rejected(db_session):
+    document = make_discovered(url_hash="f" * 65)
+    db_session.add(document)
+
+    with pytest.raises(DataError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_discovered_document_category_accepts_exactly_100_chars(db_session):
+    document = make_discovered(document_category="c" * 100)
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+
+    assert len(document.document_category) == 100
+
+
+async def test_discovered_document_category_longer_than_100_chars_is_rejected(db_session):
+    document = make_discovered(document_category="c" * 101)
+    db_session.add(document)
+
+    with pytest.raises(DataError):
+        await db_session.commit()
+    await db_session.rollback()
+
+
+async def test_discovered_document_url_and_reason_are_unbounded_text(db_session):
+    long_url = "https://example.com/" + "a" * 5000
+    long_reason = "reason " * 5000
+    document = make_discovered(url=long_url, reason=long_reason)
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+
+    assert document.url == long_url
+    assert document.reason == long_reason
+
+
+@pytest.mark.parametrize("score", [0.0, 0.5, 1.0])
+async def test_discovered_document_score_values_round_trip(db_session, score):
+    document = make_discovered(
+        trust_score=score,
+        educational_score=score,
+        implementation_score=score,
+        authority_score=score,
+    )
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+
+    assert document.trust_score == pytest.approx(score)
+    assert document.educational_score == pytest.approx(score)
+    assert document.implementation_score == pytest.approx(score)
+    assert document.authority_score == pytest.approx(score)
+
+
+async def test_discovered_document_can_be_built_from_create_schema(db_session):
+    schema = DiscoveredDocumentCreate(
+        url="https://example.com/from-schema",
+        url_hash=unique_hash(),
+        decision=DiscoveredDocumentDecision.REJECT,
+        trust_score=0.2,
+        educational_score=0.1,
+        implementation_score=0.3,
+        authority_score=0.4,
+        document_category="marketing",
+        reason="Landing page without technical content.",
+    )
+
+    document = DiscoveredDocument(**schema.model_dump())
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+
+    assert document.id is not None
+    assert document.url == schema.url
+    assert document.url_hash == schema.url_hash
+    assert document.decision == DiscoveredDocumentDecision.REJECT
+    assert document.trust_score == pytest.approx(0.2)
+    assert document.document_category == "marketing"
+    assert document.reason == "Landing page without technical content."
+
+
+async def test_discovered_document_minimal_create_schema_is_persistable(db_session):
+    schema = DiscoveredDocumentCreate(
+        url="https://example.com/minimal",
+        url_hash=unique_hash(),
+        decision=DiscoveredDocumentDecision.ACCEPT,
+    )
+
+    document = DiscoveredDocument(**schema.model_dump())
+    db_session.add(document)
+    await db_session.commit()
+    await db_session.refresh(document)
+
+    assert document.trust_score is None
+    assert document.reason is None
