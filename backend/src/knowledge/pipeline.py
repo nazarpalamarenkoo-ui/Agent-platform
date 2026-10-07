@@ -1,5 +1,5 @@
 import hashlib
-
+import logging
 from src.knowledge.ingestion.extraction.base_extractor import ExtractedDocument
 from src.knowledge.ingestion.extraction.registry import ExtractorRegistry
 from src.knowledge.ingestion.extraction.chunking import Chuncking
@@ -27,6 +27,7 @@ from src.db.enums.knowledge_types import KnowledgeType
 from src.db.enums.document_status import DocumentStatus
 from src.db.models.document import Document
 
+logger = logging.getLogger(__name__)
 class IngestionPipeline:
     
     def __init__(
@@ -34,12 +35,13 @@ class IngestionPipeline:
         vector_store: QdrantVectorSearch,
         document_repo: DocumentRepository,
         chunk_repo: DocumentChunkRepository,
-        pack_repo: KnowledgePackRepository
+        pack_repo: KnowledgePackRepository,
+        embedder: Embedding | None = None,
     ):
         self.chunker = Chuncking()
         self.normalizer = Normalizer()
         self.validator = Validator()
-        self.embedder = Embedding()
+        self.embedder = embedder or Embedding()
         self.language_detector = LanguageDetect()
         self.tag_extractor = TagExtractor()
         self.quality_scorer = QualityScorer(normalizer=self.normalizer)
@@ -112,6 +114,10 @@ class IngestionPipeline:
             return []
         result = []
         embedding_results = self.embedder.embed([chunk.text for chunk in chunks])
+        if len(embedding_results) != len(chunks):
+            raise ValueError(
+                f"Embedder returned {len(embedding_results)} vectors for {len(chunks)} chunks"
+            )
         
         for chunk, embedding_result in zip(chunks, embedding_results):
             result.append(EmbeddedChunk(
@@ -123,7 +129,13 @@ class IngestionPipeline:
             
         return result
             
-    
+    async def _rollback_points(self, points: list[VectorPoint]) -> None:
+        for point in points:
+            try:
+                await self.vector_store.delete(point.id)
+            except Exception:
+                logger.exception("Rollback failed for point %s", point.id)
+                
     def _build_vector_points(
         self,
         embedded_chunks: list[EmbeddedChunk],
@@ -190,7 +202,7 @@ class IngestionPipeline:
         pack = await self.pack_repo.get_by_id(knowledge_pack_id)
         if pack is None:
             raise ValueError(f'Pack with id={knowledge_pack_id} does not exist')
-        
+
         extracted = self._extract(raw_doc)
         language = self._language(extracted)
         chunks = self._chunk_and_filter(extracted, language)
@@ -198,7 +210,7 @@ class IngestionPipeline:
         if not chunks:
             raise ValueError(f"No valid chunks extracted from {raw_doc.source}")
         document = await self._save_document(raw_doc, document_type, knowledge_type, knowledge_pack_id)
-        
+
         try:
             embedded_chunks = self._embed(chunks)
             points = self._build_vector_points(embedded_chunks, document.id, document_type, pack.slug, pack.domain.slug)
@@ -210,12 +222,10 @@ class IngestionPipeline:
                 await self.document_repo.update_status(document.id, DocumentStatus.INDEXED)
             except Exception:
                 if upserted:
-                    for point in points:
-                        await self.vector_store.delete(point.id)
+                    await self._rollback_points(points)
                 raise
         except Exception as e:
             await self.document_repo.update_status(document.id, DocumentStatus.FAILED)
             raise e
 
         return document
-        

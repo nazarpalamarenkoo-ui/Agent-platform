@@ -267,10 +267,10 @@ class TestBuildFromSearch:
         mock_document_repo.get_by_hash = AsyncMock(return_value=None)
         mock_pipeline.process = AsyncMock(return_value=make_document(1))
 
-        result = await builder.build_from_search("query", 5, PACK_ID, DOCUMENT_TYPE, KNOWLEDGE_TYPE)
+        result = await builder.build_from_search("query", PACK_ID, DOCUMENT_TYPE, KNOWLEDGE_TYPE)
 
         assert result.succeeded == [1]
-        mock_orchestrator.orchestrate.assert_awaited_once_with("query", 5)
+        mock_orchestrator.orchestrate.assert_awaited_once_with("query")
 
     @pytest.mark.asyncio
     async def test_empty_search_results_return_empty_result(
@@ -279,7 +279,7 @@ class TestBuildFromSearch:
         mock_orchestrator.orchestrate = AsyncMock(return_value=[])
         mock_document_repo.get_by_hash = AsyncMock(return_value=None)
 
-        result = await builder.build_from_search("query", 5, PACK_ID, DOCUMENT_TYPE, KNOWLEDGE_TYPE)
+        result = await builder.build_from_search("query", PACK_ID, DOCUMENT_TYPE, KNOWLEDGE_TYPE)
 
         assert result.succeeded == []
         assert result.skipped_duplicates == []
@@ -301,7 +301,7 @@ class TestBuildFromSearch:
 
         mock_pipeline.process = AsyncMock(side_effect=process_side_effect)
 
-        result = await builder.build_from_search("query", 5, PACK_ID, DOCUMENT_TYPE, KNOWLEDGE_TYPE)
+        result = await builder.build_from_search("query", PACK_ID, DOCUMENT_TYPE, KNOWLEDGE_TYPE)
 
         assert result.succeeded == [1]
         assert result.failed == [{"source": "https://bad.com", "error": "bad content"}]

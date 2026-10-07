@@ -72,9 +72,9 @@ class CorpusBuilder:
         result.failed.extend(load_failures)
         return result
     
-    async def build_from_search(self, query: str, limit: int, knowledge_pack_id: int, document_type: DocumentType, knowledge_type: KnowledgeType) -> CorpusBuilderResult:
+    async def build_from_search(self, query: str, knowledge_pack_id: int, document_type: DocumentType, knowledge_type: KnowledgeType) -> CorpusBuilderResult:
         
-        raw_docs = await self.orchestrator.orchestrate(query, limit)
+        raw_docs = await self.orchestrator.orchestrate(query)
         return await self._process_batch(raw_docs, knowledge_pack_id, document_type, knowledge_type) # type: ignore
     
     
