@@ -2,9 +2,10 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
-from src.repositories.knowledge_pack_repo import KnowledgePackRepository
-from src.db.models.knowledge_packs import KnowledgePack
 from src.db.models.document import Document
+from src.db.models.knowledge_domains import KnowledgeDomain
+from src.db.models.knowledge_packs import KnowledgePack
+from src.repositories.knowledge_pack_repo import KnowledgePackRepository
 
 pytestmark = pytest.mark.integration
 
@@ -20,19 +21,15 @@ class TestKnowledgePackUniqueConstraints:
         self, pack_repo, db_session, sample_knowledge_domain
     ):
         await pack_repo.create(
-            slug="duplicate-pack-slug",
-            name="First Pack",
-            domain_id=sample_knowledge_domain.id,
-            description="Original",
+            slug="duplicate-pack-slug", name="First Pack",
+            domain_id=sample_knowledge_domain.id, description="Original",
         )
         await db_session.commit()
 
         with pytest.raises(IntegrityError):
             await pack_repo.create(
-                slug="duplicate-pack-slug",
-                name="Second Pack",
-                domain_id=sample_knowledge_domain.id,
-                description="Duplicate slug",
+                slug="duplicate-pack-slug", name="Second Pack",
+                domain_id=sample_knowledge_domain.id, description="Duplicate slug",
             )
             await db_session.commit()
 
@@ -42,19 +39,15 @@ class TestKnowledgePackUniqueConstraints:
         self, pack_repo, db_session, sample_knowledge_domain
     ):
         await pack_repo.create(
-            slug="pack-a",
-            name="Shared Name",
-            domain_id=sample_knowledge_domain.id,
-            description="First",
+            slug="pack-a", name="Shared Name",
+            domain_id=sample_knowledge_domain.id, description="First",
         )
         await db_session.commit()
 
         with pytest.raises(IntegrityError):
             await pack_repo.create(
-                slug="pack-b",
-                name="Shared Name",
-                domain_id=sample_knowledge_domain.id,
-                description="Second",
+                slug="pack-b", name="Shared Name",
+                domain_id=sample_knowledge_domain.id, description="Second",
             )
             await db_session.commit()
 
@@ -64,18 +57,14 @@ class TestKnowledgePackUniqueConstraints:
         self, pack_repo, db_session, sample_knowledge_domain, another_knowledge_domain
     ):
         pack_a = await pack_repo.create(
-            slug="pack-domain-a",
-            name="Shared Name",
-            domain_id=sample_knowledge_domain.id,
-            description="In domain A",
+            slug="pack-domain-a", name="Shared Name",
+            domain_id=sample_knowledge_domain.id, description="In domain A",
         )
         await db_session.commit()
 
         pack_b = await pack_repo.create(
-            slug="pack-domain-b",
-            name="Shared Name",
-            domain_id=another_knowledge_domain.id,
-            description="In domain B",
+            slug="pack-domain-b", name="Shared Name",
+            domain_id=another_knowledge_domain.id, description="In domain B",
         )
         await db_session.commit()
         await db_session.refresh(pack_b)
@@ -86,15 +75,11 @@ class TestKnowledgePackUniqueConstraints:
 
 class TestKnowledgePackForeignKeyIntegrity:
 
-    async def test_cannot_create_pack_with_nonexistent_domain(
-        self, pack_repo, db_session
-    ):
+    async def test_cannot_create_pack_with_nonexistent_domain(self, pack_repo, db_session):
         with pytest.raises(IntegrityError):
             await pack_repo.create(
-                slug="orphan-pack",
-                name="Orphan Pack",
-                domain_id=999_999,
-                description="Bad FK",
+                slug="orphan-pack", name="Orphan Pack",
+                domain_id=999_999, description="Bad FK",
             )
             await db_session.commit()
 
@@ -113,19 +98,14 @@ class TestKnowledgePackDeleteBehaviour:
         await db_session.commit()
 
         result = await db_session.execute(
-            select(Document)
-            .where(Document.id == doc_id)
-            .execution_options(populate_existing=True)
+            select(Document).where(Document.id == doc_id).execution_options(populate_existing=True)
         )
-        reloaded = result.scalar_one()
 
-        assert reloaded.knowledge_pack_id is None
+        assert result.scalar_one().knowledge_pack_id is None
 
     async def test_deleting_domain_cascades_to_pack(
         self, pack_repo, db_session, sample_knowledge_domain, sample_knowledge_pack
     ):
-        from src.db.models.knowledge_domains import KnowledgeDomain
-
         pack_id = sample_knowledge_pack.id
 
         domain = await db_session.get(KnowledgeDomain, sample_knowledge_domain.id)
@@ -146,10 +126,8 @@ class TestKnowledgePackLookupsReflectPersistedState:
         self, pack_repo, db_session, sample_knowledge_domain
     ):
         created = await pack_repo.create(
-            slug="lookup-pack",
-            name="Lookup Pack",
-            domain_id=sample_knowledge_domain.id,
-            description="For slug lookup",
+            slug="lookup-pack", name="Lookup Pack",
+            domain_id=sample_knowledge_domain.id, description="For slug lookup",
         )
         await db_session.commit()
 
@@ -162,21 +140,69 @@ class TestKnowledgePackLookupsReflectPersistedState:
         self, pack_repo, db_session, sample_knowledge_domain, another_knowledge_domain
     ):
         in_domain = await pack_repo.create(
-            slug="in-domain-pack",
-            name="In Domain",
-            domain_id=sample_knowledge_domain.id,
-            description="Belongs to sample domain",
+            slug="in-domain-pack", name="In Domain",
+            domain_id=sample_knowledge_domain.id, description="Sample domain",
         )
-        other_domain_pack = await pack_repo.create(
-            slug="other-domain-pack",
-            name="Other Domain",
-            domain_id=another_knowledge_domain.id,
-            description="Belongs to another domain",
+        other = await pack_repo.create(
+            slug="other-domain-pack", name="Other Domain",
+            domain_id=another_knowledge_domain.id, description="Another domain",
         )
         await db_session.commit()
 
         results = await pack_repo.list_by_domain(sample_knowledge_domain.id)
-        ids = {p.id for p in results}
 
-        assert in_domain.id in ids
-        assert other_domain_pack.id not in ids
+        assert in_domain.id in {p.id for p in results}
+        assert other.id not in {p.id for p in results}
+
+    async def test_get_by_id_with_documents_loads_committed_documents(
+        self, pack_repo, db_session, sample_knowledge_pack, classified_document
+    ):
+        pack_id, doc_id = sample_knowledge_pack.id, classified_document.id
+        db_session.expunge_all()
+
+        found = await pack_repo.get_by_id_with_documents(pack_id)
+
+        assert [d.id for d in found.documents] == [doc_id]
+
+
+class TestKnowledgePackArchive:
+
+    async def test_archive_is_persisted_and_hides_from_active_queries(
+        self, pack_repo, db_session, sample_knowledge_pack
+    ):
+        pack_id = sample_knowledge_pack.id
+
+        await pack_repo.archive(sample_knowledge_pack)
+        await db_session.commit()
+        db_session.expunge_all()
+
+        assert await pack_repo.get_active(pack_id) is None
+        assert pack_id not in {p.id for p in await pack_repo.list_active()}
+        assert await pack_repo.get_active_many([pack_id]) == []
+
+    async def test_restore_is_persisted(self, pack_repo, db_session, sample_knowledge_pack):
+        pack_id = sample_knowledge_pack.id
+        await pack_repo.archive(sample_knowledge_pack)
+        await db_session.commit()
+
+        await pack_repo.restore(sample_knowledge_pack)
+        await db_session.commit()
+        db_session.expunge_all()
+
+        assert (await pack_repo.get_active(pack_id)).id == pack_id
+
+    async def test_archived_pack_stays_in_bundle_and_is_flagged_in_manifest(
+        self, pack_repo, db_session, config_bundle_with_knowledge_pack, sample_knowledge_pack
+    ):
+        bundle_id = config_bundle_with_knowledge_pack.id
+
+        await pack_repo.archive(sample_knowledge_pack)
+        await db_session.commit()
+
+        rows = await pack_repo.list_manifest_for_bundle(bundle_id)
+
+        assert [r.id for r in rows] == [sample_knowledge_pack.id]
+        assert rows[0].archived_at is not None
+        assert [p.id for p in await pack_repo.list_for_bundle(bundle_id)] == [
+            sample_knowledge_pack.id
+        ]

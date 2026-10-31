@@ -1,11 +1,18 @@
-import pytest
 from datetime import datetime, timedelta, timezone
 
+import pytest
+
 from src.repositories.device_code_repo import DeviceCodeRepository
-from src.db.models.device_code import DeviceCode
-from src.db.enums.device_code_status import DeviceStatus
 
 pytestmark = pytest.mark.db
+
+
+def past(minutes=5):
+    return datetime.now(timezone.utc) - timedelta(minutes=minutes)
+
+
+def now():
+    return datetime.now(timezone.utc)
 
 
 @pytest.fixture
@@ -13,106 +20,126 @@ def device_repo(db_session):
     return DeviceCodeRepository(db_session)
 
 
-class TestDeviceCodeRepository:
+class TestTokenLookups:
 
-    async def test_get_by_code_found(self, device_repo, sample_device_code):
-        found = await device_repo.get_by_code(sample_device_code.device_code)
+    async def test_get_by_token_hash_found_even_if_revoked_or_expired(
+        self, device_repo, make_device_code
+    ):
+        revoked = await make_device_code(revoked_at=past())
+        expired = await make_device_code(expires_at=past())
+
+        assert (await device_repo.get_by_token_hash(revoked.token_hash)).id == revoked.id
+        assert (await device_repo.get_by_token_hash(expired.token_hash)).id == expired.id
+
+    async def test_get_by_token_hash_not_found(self, device_repo):
+        assert await device_repo.get_by_token_hash("missing") is None
+
+    async def test_get_active_returns_valid_device(self, device_repo, sample_device_code):
+        found = await device_repo.get_active_by_token_hash(sample_device_code.token_hash)
 
         assert found is not None
         assert found.id == sample_device_code.id
 
-    async def test_get_by_code_not_found(self, device_repo):
-        found = await device_repo.get_by_code("XXXX-0000")
+    async def test_get_active_none_when_revoked(self, device_repo, make_device_code):
+        device = await make_device_code(revoked_at=past())
 
-        assert found is None
+        assert await device_repo.get_active_by_token_hash(device.token_hash) is None
 
-    async def test_get_pending_for_user_returns_pending(
-        self, device_repo, sample_device_code, sample_user
+    async def test_get_active_none_when_expired(self, device_repo, make_device_code):
+        device = await make_device_code(expires_at=past(1))
+
+        assert await device_repo.get_active_by_token_hash(device.token_hash) is None
+
+    async def test_get_active_none_for_unknown_hash(self, device_repo):
+        assert await device_repo.get_active_by_token_hash("missing") is None
+
+
+class TestOwnership:
+
+    async def test_get_owned_checks_owner(
+        self, device_repo, sample_device_code, sample_user, another_user
     ):
-        results = await device_repo.get_pending_for_user(sample_user.id)
+        found = await device_repo.get_owned(sample_device_code.id, sample_user.id)
 
-        ids = {d.id for d in results}
-        assert sample_device_code.id in ids
-
-    async def test_get_pending_for_user_excludes_approved(
-        self, device_repo, approved_device_code, sample_user
-    ):
-        results = await device_repo.get_pending_for_user(sample_user.id)
-
-        ids = {d.id for d in results}
-        assert approved_device_code.id not in ids
-
-    async def test_get_pending_for_user_empty_for_unknown(self, device_repo):
-        results = await device_repo.get_pending_for_user(999999)
-
-        assert results == []
-
-    async def test_approve_sets_status(self, device_repo, sample_device_code):
-        updated = await device_repo.approve(sample_device_code)
-
-        assert updated.status == DeviceStatus.APPROVED
-
-    async def test_reject_sets_status(self, device_repo, sample_device_code):
-        updated = await device_repo.reject(sample_device_code)
-
-        assert updated.status == DeviceStatus.REJECTED
-
-    async def test_get_valid_by_code_returns_pending_unexpired(
-        self, device_repo, sample_device_code
-    ):
-        found = await device_repo.get_valid_by_code(sample_device_code.device_code)
-
-        assert found is not None
         assert found.id == sample_device_code.id
+        assert await device_repo.get_owned(sample_device_code.id, another_user.id) is None
+        assert await device_repo.get_owned(999999, sample_user.id) is None
 
-    async def test_get_valid_by_code_none_for_approved(
-        self, device_repo, approved_device_code
+
+class TestListForUser:
+
+    async def test_returns_only_own_active_devices_newest_first(
+        self, device_repo, make_device_code, sample_user, another_user
     ):
-        found = await device_repo.get_valid_by_code(approved_device_code.device_code)
+        first = await make_device_code()
+        second = await make_device_code()
+        await make_device_code(revoked_at=past())
+        await make_device_code(expires_at=past())
+        await make_device_code(user=another_user)
 
-        assert found is None
+        result = await device_repo.list_for_user(sample_user.id)
 
-    async def test_get_valid_by_code_none_for_expired_time(
-        self, device_repo, db_session, sample_user
+        assert [d.id for d in result] == [second.id, first.id]
+
+    async def test_active_only_false_includes_revoked_and_expired(
+        self, device_repo, make_device_code, sample_user
     ):
-        expired = DeviceCode(
-            device_code="ZZZZ-9999",
-            user_id=sample_user.id,
-            status=DeviceStatus.PENDING,
-            scope="read",
-            expires_at=datetime.now(timezone.utc) - timedelta(minutes=1),
-            interval=5,
-        )
-        db_session.add(expired)
-        await db_session.flush()
+        active = await make_device_code()
+        revoked = await make_device_code(revoked_at=past())
+        expired = await make_device_code(expires_at=past())
 
-        found = await device_repo.get_valid_by_code("ZZZZ-9999")
+        result = await device_repo.list_for_user(sample_user.id, active_only=False)
 
-        assert found is None
+        assert {d.id for d in result} == {active.id, revoked.id, expired.id}
 
-    async def test_expire_stale_marks_expired(
-        self, device_repo, db_session, sample_user
-    ):
-        stale = DeviceCode(
-            device_code="STALE-001",
-            user_id=sample_user.id,
-            status=DeviceStatus.PENDING,
-            scope="read",
-            expires_at=datetime.now(timezone.utc) - timedelta(minutes=5),
-            interval=5,
-        )
-        db_session.add(stale)
-        await db_session.flush()
+    async def test_paginates(self, device_repo, make_device_code, sample_user):
+        first = await make_device_code()
+        second = await make_device_code()
+        await make_device_code()
 
-        await device_repo.expire_stale()
+        page = await device_repo.list_for_user(sample_user.id, limit=2, offset=1)
 
-        refreshed = await device_repo.get_by_code("STALE-001")
-        assert refreshed.status == DeviceStatus.EXPIRED
+        assert [d.id for d in page] == [second.id, first.id]
 
-    async def test_expire_stale_leaves_valid_untouched(
+    async def test_empty_for_unknown_user(self, device_repo):
+        assert await device_repo.list_for_user(999999) == []
+
+
+class TestRevokeAndTouch:
+
+    async def test_revoke_sets_timestamp_once(self, device_repo, sample_device_code):
+        assert sample_device_code.revoked_at is None
+
+        await device_repo.revoke(sample_device_code)
+        first = sample_device_code.revoked_at
+        await device_repo.revoke(sample_device_code)
+
+        assert first is not None
+        assert sample_device_code.revoked_at == first
+
+    async def test_revoked_device_is_no_longer_active(
         self, device_repo, sample_device_code
     ):
-        await device_repo.expire_stale()
+        await device_repo.revoke(sample_device_code)
 
-        refreshed = await device_repo.get_by_code(sample_device_code.device_code)
-        assert refreshed.status == DeviceStatus.PENDING
+        assert (
+            await device_repo.get_active_by_token_hash(sample_device_code.token_hash)
+            is None
+        )
+
+    async def test_touch_updates_last_used_at(self, device_repo, sample_device_code):
+        assert sample_device_code.last_used_at is None
+        before = now()
+
+        updated = await device_repo.touch(sample_device_code)
+
+        assert updated is sample_device_code
+        assert updated.last_used_at >= before
+
+    async def test_touch_moves_timestamp_forward(self, device_repo, make_device_code):
+        device = await make_device_code(last_used_at=past(60))
+        old = device.last_used_at
+
+        await device_repo.touch(device)
+
+        assert device.last_used_at > old
