@@ -34,6 +34,11 @@ class KnowledgePack(Base):
 
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -53,9 +58,13 @@ class KnowledgePack(Base):
     config_bundles: Mapped[list["ConfigBundle"]] = relationship(
         secondary="config_bundle_knowledge_packs",
         back_populates="knowledge_packs",
-        lazy="selectin",
+        lazy="raise",
         passive_deletes=True,
     )
+
+    @property
+    def is_archived(self) -> bool:
+        return self.archived_at is not None
 
     def __repr__(self):
         return f"<KnowledgePack id={self.id} slug={self.slug}>"

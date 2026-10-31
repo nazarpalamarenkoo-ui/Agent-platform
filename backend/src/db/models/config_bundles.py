@@ -1,8 +1,10 @@
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import ForeignKey, String, DateTime, UniqueConstraint, Integer
 from datetime import datetime
-from src.db.db_connection import Base
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
+
+from src.db.db_connection import Base
 
 
 class ConfigBundle(Base):
@@ -28,9 +30,9 @@ class ConfigBundle(Base):
         nullable=False,
         index=True,
     )
-
+    
     agent_id: Mapped[int] = mapped_column(
-        ForeignKey("agent_profiles.id", ondelete="CASCADE"),
+        ForeignKey("agent_profiles.id", ondelete="RESTRICT"),
         nullable=False,
         index=True,
     )
@@ -48,6 +50,13 @@ class ConfigBundle(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
+        nullable=False,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
         nullable=False,
     )
 

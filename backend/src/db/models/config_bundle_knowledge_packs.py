@@ -11,7 +11,7 @@ class ConfigBundleKnowledgePack(Base):
         primary_key=True,
     )
     knowledge_pack_id: Mapped[int] = mapped_column(
-        ForeignKey("knowledge_packs.id", ondelete="CASCADE"),
+        ForeignKey("knowledge_packs.id"),
         primary_key=True,
     )
 

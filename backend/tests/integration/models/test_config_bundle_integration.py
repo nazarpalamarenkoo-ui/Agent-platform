@@ -1,5 +1,6 @@
 import pytest
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 
 from src.db.models.config_bundles import ConfigBundle
@@ -190,6 +191,7 @@ class TestConfigBundleDeleteBehaviour:
         result = await db_session.execute(
             select(Skill)
             .where(Skill.id == sample_skill.id)
+            .options(selectinload(Skill.config_bundles))
             .execution_options(populate_existing=True)
         )
         reloaded_skill = result.scalar_one()
@@ -198,6 +200,7 @@ class TestConfigBundleDeleteBehaviour:
         result = await db_session.execute(
             select(ToolDefinition)
             .where(ToolDefinition.id == sample_tool.id)
+            .options(selectinload(ToolDefinition.config_bundles))
             .execution_options(populate_existing=True)
         )
         reloaded_tool = result.scalar_one()

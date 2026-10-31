@@ -11,7 +11,7 @@ class ConfigBundleTool(Base):
         primary_key=True,
     )
     tool_id: Mapped[int] = mapped_column(
-        ForeignKey("tools.id", ondelete="CASCADE"),
+        ForeignKey("tools.id"),
         primary_key=True,
     )
 

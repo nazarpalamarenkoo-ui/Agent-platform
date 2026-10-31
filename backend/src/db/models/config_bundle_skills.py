@@ -10,8 +10,9 @@ class ConfigBundleSkill(Base):
         ForeignKey("config_bundles.id", ondelete="CASCADE"),
         primary_key=True,
     )
+
     skill_id: Mapped[int] = mapped_column(
-        ForeignKey("skills.id", ondelete="CASCADE"),
+        ForeignKey("skills.id"),
         primary_key=True,
     )
 

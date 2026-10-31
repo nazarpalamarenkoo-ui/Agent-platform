@@ -9,12 +9,12 @@ DATABASE_URL = settings.DATABASE_URL
 
 Base = declarative_base()
 
-POOL_SIZE = getattr(settings.DB_POOL_SIZE, "DB_POOL_SIZE", 10)
-MAX_OVERFLOW = getattr(settings.DB_MAX_OVERFLOW, "DB_MAX_OVERFLOW", 20)
-POOL_TIMEOUT = getattr(settings.DB_POOL_TIMEOUT, "DB_POOL_TIMEOUT", 30)          
-POOL_RECYCLE = getattr(settings.DB_POOL_RECYCLE, "DB_POOL_RECYCLE", 1800)        
-POOL_PRE_PING = getattr(settings.DB_POOL_PRE_PING, "DB_POOL_PRE_PING", True)      
-USE_NULLPOOL = getattr(settings.DB_USE_NULLPOOL, "DB_USE_NULLPOOL", False)       
+POOL_SIZE = getattr(settings, "DB_POOL_SIZE", 10)
+MAX_OVERFLOW = getattr(settings, "DB_MAX_OVERFLOW", 20)
+POOL_TIMEOUT = getattr(settings, "DB_POOL_TIMEOUT", 30)          
+POOL_RECYCLE = getattr(settings, "DB_POOL_RECYCLE", 1800)        
+POOL_PRE_PING = getattr(settings, "DB_POOL_PRE_PING", True)      
+USE_NULLPOOL = getattr(settings, "DB_USE_NULLPOOL", False)       
 
 if USE_NULLPOOL:
     engine = create_async_engine(

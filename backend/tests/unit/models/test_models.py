@@ -1,1149 +1,1117 @@
-import uuid
-from datetime import datetime, timezone
+import itertools
+from datetime import datetime, timedelta, timezone
 
 import pytest
-import pytest_asyncio
-from sqlalchemy import select
-from sqlalchemy.exc import DataError, IntegrityError, StatementError
-
-from src.db.models.users import User
-from src.db.models.agent_profiles import AgentProfile
-from src.db.models.skills import Skill
-from src.db.models.tools_definition import ToolDefinition
-from src.db.models.config_bundles import ConfigBundle
-from src.db.models.token_usage_events import TokenUsageEvent
-from src.db.models.device_code import DeviceCode
+from sqlalchemy.exc import IntegrityError, StatementError, DBAPIError, IntegrityError, StatementError
+from src.catalog.hint.skill_markdown import skill_file_hash
+from src.db.enums.job_status import JobStatus as JobStatusEnum
+from src.db.enums.job_type import JobType as JobTypeEnum
+from src.db.enums.notification_type import NotificationType
+from src.db.enums.skill_visibility import SkillVisibility
+from src.db.enums.tool_auth_type import ToolAuthType
+from src.db.enums.tool_visibility import ToolVisibility
+from src.db.enums.user_role import UserRole
 from src.db.models.agent_profile_skills import AgentProfileSkill
 from src.db.models.agent_profile_tools import AgentProfileTool
-from src.db.models.config_bundle_skills import ConfigBundleSkill
+from src.db.models.agent_profiles import AgentProfile
+from src.db.models.background_jobs import BackgroundJob, JobStatus, JobType
 from src.db.models.config_bunlde_tools import ConfigBundleTool
-from src.db.models.config_bundle_knowledge_packs import ConfigBundleKnowledgePack
-from src.db.enums.device_code_status import DeviceStatus
-from src.db.models.knowledge_domains import KnowledgeDomain
+from src.db.models.config_bundle_skills import ConfigBundleSkill
+from src.db.models.config_bundles import ConfigBundle
+from src.db.models.device_code import DeviceCode
 from src.db.models.knowledge_packs import KnowledgePack
-from src.db.models.skills_domain import SkillDomain
-from src.db.models.tool_domain import ToolDomain
-from src.db.models.tags import Tag
-from src.db.models.document import Document
-from src.db.models.document_chunks import DocumentChunk
-from src.db.models.document_tags import DocumentTag
-from src.db.models.skill_usage_events import SkillUsageEvent
-from src.db.models.tool_usage_events import ToolUsageEvent
-from src.db.models.discovered_document import DiscoveredDocument
-from src.db.enums.document_status import DocumentStatus
-from src.db.enums.document_type import DocumentType
-from src.db.enums.discovery_type import DiscoveredDocumentDecision
-from src.schemas.discovered_document import DiscoveredDocumentCreate
+from src.db.models.notification import Notification
+from src.db.models.skill_access_logs import SkillAccessLog
+from src.db.models.skills import Skill
+from src.db.models.tools_definition import ToolDefinition
+from src.db.models.users import User
 
 pytestmark = pytest.mark.unit
 
-
-async def test_user_creation(db_session):
-    user = User(username="john", email="john@example.com", password_hash="hashed")
-    db_session.add(user)
-    await db_session.commit()
-    await db_session.refresh(user)
-
-    assert user.id is not None
-    assert user.username == "john"
-    assert user.email == "john@example.com"
-    assert user.password_hash == "hashed"
-    assert user.created_at is not None
-    assert user.token_limit == 100_000
-    assert user.tokens_used == 0
+_counter = itertools.count(1)
 
 
-async def test_user_username_must_be_unique(db_session, sample_user):
-    duplicate = User(username=sample_user.username, email="different@example.com", password_hash="hashed")
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_user_email_must_be_unique(db_session, sample_user):
-    duplicate = User(username="different_username", email=sample_user.email, password_hash="hashed")
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_user_repr(sample_user):
-    assert repr(sample_user) == f"<User id={sample_user.id} username={sample_user.username}>"
-
-
-async def test_skill_creation(db_session):
-    skill = Skill(
-        skill_name="summarization",
-        description="Summarizes text",
+def make_skill(**overrides) -> Skill:
+    n = next(_counter)
+    values = dict(
+        skill_name=f"skill-{n}",
+        description="desc",
+        content="# body",
+        visibility=SkillVisibility.GLOBAL,
     )
-    db_session.add(skill)
-    await db_session.commit()
-    await db_session.refresh(skill)
+    values.update(overrides)
+    return Skill(**values)
+
+
+def make_tool(**overrides) -> ToolDefinition:
+    n = next(_counter)
+    values = dict(
+        tool_name=f"tool-{n}",
+        description="desc",
+        url="https://example.com/mcp",
+    )
+    values.update(overrides)
+    return ToolDefinition(**values)
+
+
+def make_agent(**overrides) -> AgentProfile:
+    n = next(_counter)
+    values = dict(agent_name=f"agent-{n}", description="desc")
+    values.update(overrides)
+    return AgentProfile(**values)
+
+
+def make_user(**overrides) -> User:
+    n = next(_counter)
+    values = dict(
+        username=f"user-{n}",
+        email=f"user-{n}@example.com",
+        password_hash="hashed",
+    )
+    values.update(overrides)
+    return User(**values)
+
+
+def make_device(user_id: int, **overrides) -> DeviceCode:
+    n = next(_counter)
+    values = dict(
+        user_id=user_id,
+        name=f"device-{n}",
+        token_hash=f"{n:064x}",
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+    values.update(overrides)
+    return DeviceCode(**values)
+
+
+async def persist(session, *objs):
+    session.add_all(objs)
+    await session.commit()
+    for obj in objs:
+        await session.refresh(obj)
+    return objs[0] if len(objs) == 1 else objs
+
+
+async def assert_commit_fails(session, exc=IntegrityError):
+    with pytest.raises(exc):
+        await session.commit()
+    await session.rollback()
+
+async def test_user_role_defaults_to_user(db_session):
+    user = await persist(db_session, make_user())
+
+    assert user.role == UserRole.USER
+    assert user.is_admin is False
+    assert user.is_super_admin is False
+
+
+@pytest.mark.parametrize(
+    "role, is_admin, is_super_admin",
+    [
+        (UserRole.USER, False, False),
+        (UserRole.ADMIN, True, False),
+        (UserRole.SUPER_ADMIN, True, True),
+    ],
+)
+async def test_user_role_flags(db_session, role, is_admin, is_super_admin):
+    user = await persist(db_session, make_user(role=role))
+
+    assert user.role == role
+    assert user.is_admin is is_admin
+    assert user.is_super_admin is is_super_admin
+
+
+async def test_user_only_one_super_admin_allowed(db_session):
+    await persist(db_session, make_user(role=UserRole.SUPER_ADMIN))
+
+    db_session.add(make_user(role=UserRole.SUPER_ADMIN))
+    await assert_commit_fails(db_session)
+
+
+async def test_user_multiple_admins_allowed(db_session):
+    first, second = await persist(
+        db_session,
+        make_user(role=UserRole.ADMIN),
+        make_user(role=UserRole.ADMIN),
+    )
+
+    assert first.id != second.id
+
+
+async def test_user_invalid_role_is_rejected(db_session):
+    db_session.add(make_user(role="root"))
+    await assert_commit_fails(db_session, StatementError)
+
+
+async def test_user_repr_contains_role(db_session):
+    user = await persist(db_session, make_user(role=UserRole.ADMIN))
+
+    text = repr(user)
+    assert f"id={user.id}" in text
+    assert f"username={user.username}" in text
+    assert "role=" in text
+
+
+async def test_agent_profile_defaults(db_session):
+    agent = await persist(db_session, make_agent())
+
+    assert agent.is_neutral is False
+    assert agent.archived_at is None
+    assert agent.is_archived is False
+    assert agent.created_at is not None
+    assert agent.updated_at is not None
+    assert agent.skills == []
+    assert agent.tools == []
+
+
+async def test_agent_profile_is_archived_flag(db_session):
+    agent = await persist(db_session, make_agent(archived_at=datetime.now(timezone.utc)))
+
+    assert agent.is_archived is True
+
+
+async def test_agent_profile_only_one_neutral_allowed(db_session):
+    await persist(db_session, make_agent(is_neutral=True))
+
+    db_session.add(make_agent(is_neutral=True))
+    await assert_commit_fails(db_session)
+
+
+async def test_agent_profile_many_non_neutral_allowed(db_session):
+    await persist(db_session, make_agent(is_neutral=True))
+    first, second = await persist(db_session, make_agent(), make_agent())
+
+    assert first.is_neutral is False
+    assert second.is_neutral is False
+
+
+async def test_agent_profile_description_is_required(db_session):
+    db_session.add(AgentProfile(agent_name="no-description", description=None))
+    await assert_commit_fails(db_session)
+
+
+async def test_skill_global_creation(db_session):
+    skill = await persist(db_session, make_skill(skill_name="summarization"))
 
     assert skill.id is not None
-    assert skill.skill_name == "summarization"
+    assert skill.owner_id is None
+    assert skill.visibility == SkillVisibility.GLOBAL
+    assert skill.archived_at is None
+    assert skill.is_archived is False
     assert skill.skill_selected_freq == 0
+    assert skill.created_at is not None
+    assert skill.updated_at is not None
     assert skill.domains == []
 
 
-async def test_skill_can_be_created_without_domain(db_session, sample_skill):
-    assert sample_skill.domains == []
-
-
-async def test_skill_name_must_be_unique_globally(db_session, sample_skill):
-    duplicate = Skill(
-        skill_name=sample_skill.skill_name,
-        description="Another description",
+async def test_skill_private_skill_with_owner(db_session, sample_user):
+    skill = await persist(
+        db_session,
+        make_skill(owner_id=sample_user.id, visibility=SkillVisibility.PRIVATE),
     )
-    db_session.add(duplicate)
 
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
+    assert skill.owner_id == sample_user.id
+    assert skill.visibility == SkillVisibility.PRIVATE
 
 
-async def test_skill_repr(sample_skill):
-    assert repr(sample_skill) == f"<Skill id={sample_skill.id} name={sample_skill.skill_name}>"
+async def test_skill_pending_review_with_owner_is_allowed(db_session, sample_user):
+    skill = await persist(
+        db_session,
+        make_skill(owner_id=sample_user.id, visibility=SkillVisibility.PENDING_REVIEW),
+    )
+
+    assert skill.visibility == SkillVisibility.PENDING_REVIEW
 
 
-async def test_skill_domains_relationship(db_session, sample_skill, sample_knowledge_domain):
-    sample_skill.domains.append(sample_knowledge_domain)
-    db_session.add(sample_skill)
+async def test_skill_global_with_owner_violates_check(db_session, sample_user):
+    db_session.add(make_skill(owner_id=sample_user.id, visibility=SkillVisibility.GLOBAL))
+    await assert_commit_fails(db_session)
+
+
+@pytest.mark.parametrize(
+    "visibility", [SkillVisibility.PRIVATE, SkillVisibility.PENDING_REVIEW]
+)
+async def test_skill_non_global_without_owner_violates_check(db_session, visibility):
+    db_session.add(make_skill(owner_id=None, visibility=visibility))
+    await assert_commit_fails(db_session)
+
+
+async def test_skill_invalid_visibility_is_rejected(db_session):
+    db_session.add(make_skill(visibility="secret"))
+    await assert_commit_fails(db_session, StatementError)
+
+
+async def test_skill_global_name_must_be_unique(db_session):
+    await persist(db_session, make_skill(skill_name="dup"))
+
+    db_session.add(make_skill(skill_name="dup"))
+    await assert_commit_fails(db_session)
+
+
+async def test_skill_same_name_unique_per_owner(db_session, sample_user):
+    await persist(
+        db_session,
+        make_skill(skill_name="dup", owner_id=sample_user.id, visibility=SkillVisibility.PRIVATE),
+    )
+
+    db_session.add(
+        make_skill(skill_name="dup", owner_id=sample_user.id, visibility=SkillVisibility.PRIVATE)
+    )
+    await assert_commit_fails(db_session)
+
+
+async def test_skill_same_name_allowed_for_different_owners(db_session, sample_user, another_user):
+    first, second = await persist(
+        db_session,
+        make_skill(skill_name="dup", owner_id=sample_user.id, visibility=SkillVisibility.PRIVATE),
+        make_skill(skill_name="dup", owner_id=another_user.id, visibility=SkillVisibility.PRIVATE),
+    )
+
+    assert first.id != second.id
+
+
+async def test_skill_same_name_allowed_for_global_and_private(db_session, sample_user):
+    glob, priv = await persist(
+        db_session,
+        make_skill(skill_name="dup"),
+        make_skill(skill_name="dup", owner_id=sample_user.id, visibility=SkillVisibility.PRIVATE),
+    )
+
+    assert glob.id != priv.id
+
+
+async def test_skill_archived_flag(db_session):
+    skill = await persist(db_session, make_skill(archived_at=datetime.now(timezone.utc)))
+
+    assert skill.is_archived is True
+
+
+async def test_skill_description_is_required(db_session):
+    db_session.add(Skill(skill_name="nodesc", description=None, visibility=SkillVisibility.GLOBAL))
+    await assert_commit_fails(db_session)
+
+
+async def test_deleting_owner_cascades_private_skills(db_session):
+    owner = await persist(db_session, make_user())
+    skill = await persist(
+        db_session,
+        make_skill(owner_id=owner.id, visibility=SkillVisibility.PRIVATE),
+    )
+    skill_id = skill.id
+
+    await db_session.delete(owner)
     await db_session.commit()
-    await db_session.refresh(sample_skill)
 
-    assert sample_knowledge_domain in sample_skill.domains
-    assert sample_skill in sample_knowledge_domain.skills
+    assert await db_session.get(Skill, skill_id, populate_existing=True) is None
 
 
-async def test_skill_can_belong_to_multiple_domains(
-    db_session, sample_skill, sample_knowledge_domain, another_knowledge_domain
-):
-    sample_skill.domains.extend([sample_knowledge_domain, another_knowledge_domain])
-    db_session.add(sample_skill)
+async def test_skill_repr_contains_visibility(db_session):
+    skill = await persist(db_session, make_skill())
+
+    text = repr(skill)
+    assert f"id={skill.id}" in text
+    assert f"name={skill.skill_name}" in text
+    assert "visibility=" in text
+
+
+async def test_skill_content_hash_is_computed_on_creation(db_session):
+    skill = await persist(
+        db_session,
+        make_skill(skill_name="hashed", description="d", content="body"),
+    )
+
+    assert skill.content_hash
+    assert skill.content_hash == skill_file_hash("hashed", "d", "body")
+
+
+async def test_skill_content_hash_without_content(db_session):
+    skill = Skill(skill_name="n", description="d")
+
+    assert skill.content_hash == skill_file_hash("n", "d", "")
+
+
+@pytest.mark.parametrize(
+    "field, new_value",
+    [
+        ("skill_name", "renamed"),
+        ("description", "new description"),
+        ("content", "new content"),
+    ],
+)
+async def test_skill_content_hash_changes_when_field_changes(db_session, field, new_value):
+    skill = await persist(
+        db_session,
+        make_skill(skill_name="orig", description="d", content="body"),
+    )
+    old_hash = skill.content_hash
+
+    setattr(skill, field, new_value)
     await db_session.commit()
-    await db_session.refresh(sample_skill)
+    await db_session.refresh(skill)
 
-    assert {d.id for d in sample_skill.domains} == {
-        sample_knowledge_domain.id,
-        another_knowledge_domain.id,
-    }
-
-
-async def test_skill_domain_link_row_exists(db_session, skill_with_domain, sample_knowledge_domain):
-    link = await db_session.get(SkillDomain, (skill_with_domain.id, sample_knowledge_domain.id))
-    assert link is not None
+    assert skill.content_hash != old_hash
+    assert skill.content_hash == skill_file_hash(
+        skill.skill_name, skill.description, skill.content
+    )
 
 
-async def test_deleting_domain_removes_skill_domain_link_but_not_skill(
-    db_session, skill_with_domain, sample_knowledge_domain
-):
-    skill_id, domain_id = skill_with_domain.id, sample_knowledge_domain.id
+async def test_skill_content_hash_is_deterministic(db_session):
+    first = make_skill(skill_name="same", description="d", content="c")
+    second = make_skill(skill_name="same", description="d", content="c")
 
-    await db_session.delete(sample_knowledge_domain)
+    assert first.content_hash == second.content_hash
+
+
+async def test_skill_content_hash_ignores_unrelated_fields(db_session):
+    skill = await persist(db_session, make_skill())
+    old_hash = skill.content_hash
+
+    skill.skill_selected_freq = 5
     await db_session.commit()
+    await db_session.refresh(skill)
 
-    link = await db_session.get(SkillDomain, (skill_id, domain_id))
-    assert link is None
+    assert skill.content_hash == old_hash
 
-    remaining_skill = await db_session.get(Skill, skill_id)
-    assert remaining_skill is not None
-
-
-async def test_deleting_skill_removes_skill_domain_link_but_not_domain(
-    db_session, skill_with_domain, sample_knowledge_domain
-):
-    skill_id, domain_id = skill_with_domain.id, sample_knowledge_domain.id
-
-    await db_session.delete(skill_with_domain)
-    await db_session.commit()
-
-    link = await db_session.get(SkillDomain, (skill_id, domain_id))
-    assert link is None
-
-    remaining_domain = await db_session.get(KnowledgeDomain, domain_id)
-    assert remaining_domain is not None
-
-
-async def test_tool_creation(db_session):
-    tool = ToolDefinition(tool_name="web_search", description="Searches the web")
-    db_session.add(tool)
-    await db_session.commit()
-    await db_session.refresh(tool)
+async def test_tool_defaults(db_session):
+    tool = await persist(db_session, make_tool(tool_name="web_search"))
 
     assert tool.id is not None
-    assert tool.tool_name == "web_search"
+    assert tool.owner_id is None
+    assert tool.visibility == ToolVisibility.GLOBAL
+    assert tool.auth_type == ToolAuthType.NONE
+    assert tool.auth_description is None
+    assert tool.archived_at is None
     assert tool.tool_selected_freq == 0
+    assert tool.is_archived is False
+    assert tool.is_custom is False
+    assert tool.domains == []
 
 
-async def test_tool_name_must_be_unique(db_session, sample_tool):
-    duplicate = ToolDefinition(tool_name=sample_tool.tool_name, description="Another description")
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
+async def test_tool_url_is_required(db_session):
+    db_session.add(ToolDefinition(tool_name="no-url", description="d", url=None))
+    await assert_commit_fails(db_session)
 
 
-async def test_tool_repr(sample_tool):
-    assert repr(sample_tool) == f"<ToolDefinition id={sample_tool.id} name={sample_tool.tool_name}>"
+async def test_tool_url_accepts_2048_chars(db_session):
+    url = "https://example.com/" + "a" * (2048 - len("https://example.com/"))
+    tool = await persist(db_session, make_tool(url=url))
+
+    assert len(tool.url) == 2048
 
 
-async def test_tool_can_be_created_without_domain(db_session, sample_tool):
-    assert sample_tool.domains == []
+async def test_tool_url_longer_than_2048_chars_is_rejected(db_session):
+    db_session.add(make_tool(url="https://example.com/" + "a" * 2048))
+    await assert_commit_fails(db_session, DBAPIError)
 
 
-async def test_tool_can_be_scoped_to_domain(db_session, domain_scoped_tool, another_knowledge_domain):
-    assert another_knowledge_domain in domain_scoped_tool.domains
-    assert domain_scoped_tool in another_knowledge_domain.tools
+
+@pytest.mark.parametrize("auth_type", list(ToolAuthType))
+async def test_tool_auth_type_round_trip(db_session, auth_type):
+    tool = await persist(
+        db_session,
+        make_tool(auth_type=auth_type, auth_description="how to auth"),
+    )
+
+    assert tool.auth_type is auth_type
+    assert tool.auth_description == "how to auth"
 
 
-async def test_tool_domain_link_row_exists(db_session, domain_scoped_tool, another_knowledge_domain):
-    link = await db_session.get(ToolDomain, (domain_scoped_tool.id, another_knowledge_domain.id))
-    assert link is not None
+async def test_tool_invalid_auth_type_is_rejected(db_session):
+    db_session.add(make_tool(auth_type="kerberos"))
+    await assert_commit_fails(db_session, StatementError)
 
 
-async def test_deleting_domain_removes_tool_domain_link_but_not_tool(
-    db_session, domain_scoped_tool, another_knowledge_domain
+async def test_tool_private_with_owner_is_custom(db_session, sample_user):
+    tool = await persist(
+        db_session,
+        make_tool(owner_id=sample_user.id, visibility=ToolVisibility.PRIVATE),
+    )
+
+    assert tool.is_custom is True
+
+
+async def test_tool_global_with_owner_violates_check(db_session, sample_user):
+    db_session.add(make_tool(owner_id=sample_user.id, visibility=ToolVisibility.GLOBAL))
+    await assert_commit_fails(db_session)
+
+
+async def test_tool_private_without_owner_violates_check(db_session):
+    db_session.add(make_tool(owner_id=None, visibility=ToolVisibility.PRIVATE))
+    await assert_commit_fails(db_session)
+
+
+async def test_tool_global_name_must_be_unique(db_session):
+    await persist(db_session, make_tool(tool_name="dup"))
+
+    db_session.add(make_tool(tool_name="dup"))
+    await assert_commit_fails(db_session)
+
+
+async def test_tool_same_name_unique_per_owner(db_session, sample_user):
+    await persist(
+        db_session,
+        make_tool(tool_name="dup", owner_id=sample_user.id, visibility=ToolVisibility.PRIVATE),
+    )
+
+    db_session.add(
+        make_tool(tool_name="dup", owner_id=sample_user.id, visibility=ToolVisibility.PRIVATE)
+    )
+    await assert_commit_fails(db_session)
+
+
+async def test_tool_same_name_allowed_for_different_owners(db_session, sample_user, another_user):
+    first, second = await persist(
+        db_session,
+        make_tool(tool_name="dup", owner_id=sample_user.id, visibility=ToolVisibility.PRIVATE),
+        make_tool(tool_name="dup", owner_id=another_user.id, visibility=ToolVisibility.PRIVATE),
+    )
+
+    assert first.id != second.id
+
+
+async def test_tool_same_name_allowed_for_global_and_private(db_session, sample_user):
+    glob, priv = await persist(
+        db_session,
+        make_tool(tool_name="dup"),
+        make_tool(tool_name="dup", owner_id=sample_user.id, visibility=ToolVisibility.PRIVATE),
+    )
+
+    assert glob.id != priv.id
+
+
+async def test_tool_archived_flag(db_session):
+    tool = await persist(db_session, make_tool(archived_at=datetime.now(timezone.utc)))
+
+    assert tool.is_archived is True
+
+
+async def test_deleting_owner_cascades_private_tools(db_session):
+    owner = await persist(db_session, make_user())
+    tool = await persist(
+        db_session,
+        make_tool(owner_id=owner.id, visibility=ToolVisibility.PRIVATE),
+    )
+    tool_id = tool.id
+
+    await db_session.delete(owner)
+    await db_session.commit()
+
+    assert await db_session.get(ToolDefinition, tool_id, populate_existing=True) is None
+
+
+async def test_tool_repr(db_session):
+    tool = await persist(db_session, make_tool())
+
+    assert repr(tool) == f"<ToolDefinition id={tool.id} name={tool.tool_name}>"
+
+
+async def test_device_creation(db_session, sample_user):
+    device = await persist(db_session, make_device(sample_user.id, name="laptop"))
+
+    assert device.id is not None
+    assert device.user_id == sample_user.id
+    assert device.name == "laptop"
+    assert device.config_bundle_id is None
+    assert device.revoked_at is None
+    assert device.last_used_at is None
+    assert device.created_at is not None
+    assert device.expires_at.tzinfo is not None
+
+
+async def test_device_token_hash_must_be_unique(db_session, sample_user):
+    await persist(db_session, make_device(sample_user.id, token_hash="a" * 64))
+
+    db_session.add(make_device(sample_user.id, token_hash="a" * 64))
+    await assert_commit_fails(db_session)
+
+
+@pytest.mark.parametrize("field", ["name", "token_hash", "expires_at", "user_id"])
+async def test_device_required_fields_cannot_be_null(db_session, sample_user, field):
+    device = make_device(sample_user.id)
+    setattr(device, field, None)
+    db_session.add(device)
+    await assert_commit_fails(db_session)
+
+
+async def test_device_token_hash_longer_than_64_chars_is_rejected(db_session, sample_user):
+    db_session.add(make_device(sample_user.id, token_hash="f" * 65))
+    await assert_commit_fails(db_session, DBAPIError)
+
+
+async def test_device_can_be_revoked_and_marked_used(db_session, sample_user):
+    device = await persist(db_session, make_device(sample_user.id))
+    now = datetime.now(timezone.utc)
+
+    device.revoked_at = now
+    device.last_used_at = now
+    await db_session.commit()
+    await db_session.refresh(device)
+
+    assert device.revoked_at == now
+    assert device.last_used_at == now
+
+
+async def test_device_can_reference_config_bundle(db_session, sample_user, sample_config_bundle):
+    device = await persist(
+        db_session,
+        make_device(sample_user.id, config_bundle_id=sample_config_bundle.id),
+    )
+
+    assert device.config_bundle_id == sample_config_bundle.id
+
+
+async def test_deleting_config_bundle_sets_device_bundle_null(
+    db_session, sample_user, sample_config_bundle
 ):
-    tool_id, domain_id = domain_scoped_tool.id, another_knowledge_domain.id
-
-    await db_session.delete(another_knowledge_domain)
-    await db_session.commit()
-
-    link = await db_session.get(ToolDomain, (tool_id, domain_id))
-    assert link is None
-
-    remaining_tool = await db_session.get(ToolDefinition, tool_id)
-    assert remaining_tool is not None
-
-
-async def test_agent_profile_creation(db_session):
-    agent = AgentProfile(agent_name="assistant", description="A helpful assistant")
-    db_session.add(agent)
-    await db_session.commit()
-    await db_session.refresh(agent)
-
-    assert agent.id is not None
-    assert agent.agent_name == "assistant"
-
-
-async def test_agent_profile_name_must_be_unique(db_session, sample_agent_profile):
-    duplicate = AgentProfile(agent_name=sample_agent_profile.agent_name, description="Another description")
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_agent_profile_repr(sample_agent_profile):
-    assert repr(sample_agent_profile) == f"<AgentProfile id={sample_agent_profile.id} name={sample_agent_profile.agent_name}>"
-
-
-async def test_agent_profile_skills_relationship(db_session, sample_agent_profile, sample_skill):
-    sample_agent_profile.skills.append(sample_skill)
-    db_session.add(sample_agent_profile)
-    await db_session.commit()
-    await db_session.refresh(sample_agent_profile)
-
-    assert sample_skill in sample_agent_profile.skills
-    assert sample_agent_profile in sample_skill.agent_profiles
-
-
-async def test_agent_profile_tools_relationship(db_session, sample_agent_profile, sample_tool):
-    sample_agent_profile.tools.append(sample_tool)
-    db_session.add(sample_agent_profile)
-    await db_session.commit()
-    await db_session.refresh(sample_agent_profile)
-
-    assert sample_tool in sample_agent_profile.tools
-    assert sample_agent_profile in sample_tool.agent_profiles
-
-
-async def test_config_bundle_creation(db_session, sample_user, sample_agent_profile):
-    bundle = ConfigBundle(
-        user_id=sample_user.id,
-        agent_id=sample_agent_profile.id,
-        name="default-bundle",
-        description="Default configuration",
-    )
-    db_session.add(bundle)
-    await db_session.commit()
-    await db_session.refresh(bundle)
-
-    assert bundle.id is not None
-    assert bundle.created_at is not None
-    assert bundle.user_id == sample_user.id
-    assert bundle.agent_id == sample_agent_profile.id
-
-
-async def test_config_bundle_name_unique_per_user(db_session, sample_config_bundle):
-    duplicate = ConfigBundle(
-        user_id=sample_config_bundle.user_id,
-        agent_id=sample_config_bundle.agent_id,
-        name=sample_config_bundle.name,
-        description="Another description",
-    )
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_config_bundle_same_name_allowed_for_different_users(
-    db_session, sample_config_bundle, another_user, sample_agent_profile
-):
-    bundle = ConfigBundle(
-        user_id=another_user.id,
-        agent_id=sample_agent_profile.id,
-        name=sample_config_bundle.name,
-        description="Same name, different user",
-    )
-    db_session.add(bundle)
-    await db_session.commit()
-    await db_session.refresh(bundle)
-
-    assert bundle.id is not None
-
-
-async def test_config_bundle_user_relationship(db_session, sample_config_bundle, sample_user):
-    await db_session.refresh(sample_user, attribute_names=["configs"])
-    assert sample_config_bundle in sample_user.configs
-    assert sample_config_bundle.user.id == sample_user.id
-
-
-async def test_config_bundle_skills_relationship(db_session, sample_config_bundle, sample_skill):
-    sample_config_bundle.skills.append(sample_skill)
-    db_session.add(sample_config_bundle)
-    await db_session.commit()
-    await db_session.refresh(sample_config_bundle)
-
-    assert sample_skill in sample_config_bundle.skills
-    assert sample_config_bundle in sample_skill.config_bundles
-
-
-async def test_config_bundle_tools_relationship(db_session, sample_config_bundle, sample_tool):
-    sample_config_bundle.tools.append(sample_tool)
-    db_session.add(sample_config_bundle)
-    await db_session.commit()
-    await db_session.refresh(sample_config_bundle)
-
-    assert sample_tool in sample_config_bundle.tools
-    assert sample_config_bundle in sample_tool.config_bundles
-
-
-async def test_config_bundle_knowledge_packs_relationship(
-    db_session, sample_config_bundle, sample_knowledge_pack
-):
-    sample_config_bundle.knowledge_packs.append(sample_knowledge_pack)
-    db_session.add(sample_config_bundle)
-    await db_session.commit()
-    await db_session.refresh(sample_config_bundle)
-
-    assert sample_knowledge_pack in sample_config_bundle.knowledge_packs
-    assert sample_config_bundle in sample_knowledge_pack.config_bundles
-
-
-async def test_config_bundle_knowledge_pack_link_row_exists(
-    db_session, config_bundle_with_knowledge_pack, sample_knowledge_pack
-):
-    link = await db_session.get(
-        ConfigBundleKnowledgePack,
-        (config_bundle_with_knowledge_pack.id, sample_knowledge_pack.id),
-    )
-    assert link is not None
-
-
-async def test_deleting_config_bundle_removes_knowledge_pack_link_but_not_pack(
-    db_session, config_bundle_with_knowledge_pack, sample_knowledge_pack
-):
-    bundle_id, pack_id = config_bundle_with_knowledge_pack.id, sample_knowledge_pack.id
-
-    await db_session.delete(config_bundle_with_knowledge_pack)
-    await db_session.commit()
-
-    link = await db_session.get(ConfigBundleKnowledgePack, (bundle_id, pack_id))
-    assert link is None
-
-    remaining_pack = await db_session.get(KnowledgePack, pack_id)
-    assert remaining_pack is not None
-
-
-async def test_config_bundle_repr(sample_config_bundle):
-    assert repr(sample_config_bundle) == f"<ConfigBundle id={sample_config_bundle.id} name={sample_config_bundle.name}>"
-
-
-async def test_deleting_user_cascades_config_bundles(db_session, sample_user, sample_config_bundle):
-    await db_session.delete(sample_user)
-    await db_session.commit()
-
-    result = await db_session.get(ConfigBundle, sample_config_bundle.id, populate_existing=True)
-    assert result is None
-
-
-async def test_deleting_agent_profile_cascades_config_bundles(db_session, sample_agent_profile, sample_config_bundle):
-    await db_session.delete(sample_agent_profile)
-    await db_session.commit()
-
-    result = await db_session.get(ConfigBundle, sample_config_bundle.id, populate_existing=True)
-    assert result is None
-
-
-async def test_token_usage_event_creation(db_session, sample_user, sample_agent_profile):
-    event = TokenUsageEvent(
-        user_id=sample_user.id,
-        agent_id=sample_agent_profile.id,
-        tokens_used=250,
-    )
-    db_session.add(event)
-    await db_session.commit()
-    await db_session.refresh(event)
-
-    assert event.id is not None
-    assert event.tokens_used == 250
-    assert event.reported_at is not None
-
-
-async def test_token_usage_event_agent_id_is_nullable(db_session, sample_user):
-    event = TokenUsageEvent(user_id=sample_user.id, agent_id=None, tokens_used=100)
-    db_session.add(event)
-    await db_session.commit()
-    await db_session.refresh(event)
-
-    assert event.agent_id is None
-
-
-async def test_token_usage_event_user_relationship(db_session, sample_token_usage_event, sample_user):
-    await db_session.refresh(sample_user, attribute_names=["token_usage_events"])
-    assert sample_token_usage_event in sample_user.token_usage_events
-    assert sample_token_usage_event.user.id == sample_user.id
-
-
-async def test_deleting_user_cascades_token_usage_events(db_session, sample_user, sample_token_usage_event):
-    await db_session.delete(sample_user)
-    await db_session.commit()
-
-    result = await db_session.get(TokenUsageEvent, sample_token_usage_event.id, populate_existing=True)
-    assert result is None
-
-
-async def test_device_code_creation(db_session, sample_user):
-    from datetime import timedelta
-
-    device_code = DeviceCode(
-        device_code="XYZ1-2345",
-        user_id=sample_user.id,
-        scope="read write",
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
-        interval=5,
-    )
-    db_session.add(device_code)
-    await db_session.commit()
-    await db_session.refresh(device_code)
-
-    assert device_code.id is not None
-    assert device_code.status == DeviceStatus.PENDING
-
-
-async def test_device_code_value_must_be_unique(db_session, sample_device_code):
-    from datetime import timedelta
-
-    duplicate = DeviceCode(
-        device_code=sample_device_code.device_code,
-        user_id=sample_device_code.user_id,
-        scope="read",
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
-        interval=5,
-    )
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_device_code_status_transition(db_session, sample_device_code):
-    sample_device_code.status = DeviceStatus.APPROVED
-    db_session.add(sample_device_code)
-    await db_session.commit()
-    await db_session.refresh(sample_device_code)
-
-    assert sample_device_code.status == DeviceStatus.APPROVED
-
-
-async def test_device_code_repr(sample_device_code):
-    text = repr(sample_device_code)
-    assert "DeviceCode" in text
-    assert sample_device_code.device_code in text
-
-
-async def test_agent_profile_skill_link_row_exists(db_session, sample_agent_profile, sample_skill):
-    sample_agent_profile.skills.append(sample_skill)
-    db_session.add(sample_agent_profile)
-    await db_session.commit()
-
-    link = await db_session.get(AgentProfileSkill, (sample_agent_profile.id, sample_skill.id))
-    assert link is not None
-
-
-async def test_agent_profile_tool_link_row_exists(db_session, sample_agent_profile, sample_tool):
-    sample_agent_profile.tools.append(sample_tool)
-    db_session.add(sample_agent_profile)
-    await db_session.commit()
-
-    link = await db_session.get(AgentProfileTool, (sample_agent_profile.id, sample_tool.id))
-    assert link is not None
-
-
-async def test_config_bundle_skill_link_row_exists(db_session, sample_config_bundle, sample_skill):
-    sample_config_bundle.skills.append(sample_skill)
-    db_session.add(sample_config_bundle)
-    await db_session.commit()
-
-    link = await db_session.get(ConfigBundleSkill, (sample_config_bundle.id, sample_skill.id))
-    assert link is not None
-
-
-async def test_config_bundle_tool_link_row_exists(db_session, sample_config_bundle, sample_tool):
-    sample_config_bundle.tools.append(sample_tool)
-    db_session.add(sample_config_bundle)
-    await db_session.commit()
-
-    link = await db_session.get(ConfigBundleTool, (sample_config_bundle.id, sample_tool.id))
-    assert link is not None
-
-
-async def test_deleting_agent_profile_cascades_skill_links(db_session, sample_agent_profile, sample_skill):
-    sample_agent_profile.skills.append(sample_skill)
-    db_session.add(sample_agent_profile)
-    await db_session.commit()
-
-    agent_id, skill_id = sample_agent_profile.id, sample_skill.id
-    await db_session.delete(sample_agent_profile)
-    await db_session.commit()
-
-    link = await db_session.get(AgentProfileSkill, (agent_id, skill_id))
-    assert link is None
-
-    remaining_skill = await db_session.get(Skill, skill_id)
-    assert remaining_skill is not None
-
-
-async def test_knowledge_domain_creation(db_session):
-    domain = KnowledgeDomain(
-        slug="testing-strategy",
-        name="Testing Strategy",
-        description="Test design across languages",
-    )
-    db_session.add(domain)
-    await db_session.commit()
-    await db_session.refresh(domain)
-
-    assert domain.id is not None
-    assert domain.slug == "testing-strategy"
-    assert repr(domain) == f"<KnowledgeDomain id={domain.id} slug={domain.slug}>"
-
-
-async def test_knowledge_domain_slug_must_be_unique(db_session, sample_knowledge_domain):
-    duplicate = KnowledgeDomain(
-        slug=sample_knowledge_domain.slug,
-        name="Duplicate",
-        description="Should fail",
-    )
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_knowledge_domain_parent_child_relationship(
-    db_session, sample_knowledge_domain, child_knowledge_domain
-):
-    await db_session.refresh(sample_knowledge_domain, attribute_names=["children"])
-
-    assert child_knowledge_domain in sample_knowledge_domain.children
-    assert child_knowledge_domain.parent_domain_id == sample_knowledge_domain.id
-
-
-async def test_deleting_parent_domain_cascades_child_domain(
-    db_session, sample_knowledge_domain, child_knowledge_domain
-):
-    child_id = child_knowledge_domain.id
-
-    await db_session.delete(sample_knowledge_domain)
-    await db_session.commit()
-
-    result = await db_session.get(KnowledgeDomain, child_id, populate_existing=True)
-    assert result is None
-
-
-async def test_knowledge_domain_skills_relationship(db_session, skill_with_domain, sample_knowledge_domain):
-    await db_session.refresh(sample_knowledge_domain, attribute_names=["skills"])
-    assert skill_with_domain in sample_knowledge_domain.skills
-
-
-async def test_knowledge_domain_tools_relationship(db_session, domain_scoped_tool, another_knowledge_domain):
-    await db_session.refresh(another_knowledge_domain, attribute_names=["tools"])
-    assert domain_scoped_tool in another_knowledge_domain.tools
-
-
-async def test_knowledge_domain_knowledge_packs_relationship(
-    db_session, sample_knowledge_domain, sample_knowledge_pack
-):
-    await db_session.refresh(sample_knowledge_domain, attribute_names=["knowledge_packs"])
-    assert sample_knowledge_pack in sample_knowledge_domain.knowledge_packs
-    assert sample_knowledge_pack.domain.id == sample_knowledge_domain.id
-
-
-async def test_knowledge_pack_creation(db_session, sample_knowledge_pack, sample_knowledge_domain):
-    assert sample_knowledge_pack.id is not None
-    assert sample_knowledge_pack.slug == "backend-api-design-pack"
-    assert sample_knowledge_pack.version == 1
-    assert sample_knowledge_pack.domain_id == sample_knowledge_domain.id
-    assert sample_knowledge_pack.created_at is not None
-
-
-async def test_knowledge_pack_slug_must_be_unique(db_session, sample_knowledge_pack):
-    duplicate = KnowledgePack(
-        slug=sample_knowledge_pack.slug,
-        name="Different name",
-        domain_id=sample_knowledge_pack.domain_id,
-        description="Should fail on slug",
-    )
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_knowledge_pack_name_unique_per_domain(db_session, sample_knowledge_pack):
-    duplicate = KnowledgePack(
-        slug="different-slug",
-        name=sample_knowledge_pack.name,
-        domain_id=sample_knowledge_pack.domain_id,
-        description="Should fail on domain+name",
-    )
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_knowledge_pack_same_name_allowed_in_different_domain(
-    db_session, sample_knowledge_pack, another_knowledge_domain
-):
-    pack = KnowledgePack(
-        slug="different-slug-again",
-        name=sample_knowledge_pack.name,
-        domain_id=another_knowledge_domain.id,
-        description="Same name, different domain",
-    )
-    db_session.add(pack)
-    await db_session.commit()
-    await db_session.refresh(pack)
-
-    assert pack.id is not None
-    assert pack.id != sample_knowledge_pack.id
-
-
-async def test_knowledge_pack_repr(sample_knowledge_pack):
-    assert repr(sample_knowledge_pack) == f"<KnowledgePack id={sample_knowledge_pack.id} slug={sample_knowledge_pack.slug}>"
-
-
-async def test_knowledge_pack_requires_domain(db_session):
-    pack = KnowledgePack(
-        slug="orphan-pack",
-        name="Orphan Pack",
-        description="Missing domain_id",
-    )
-    db_session.add(pack)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_deleting_domain_cascades_knowledge_packs(
-    db_session, sample_knowledge_domain, sample_knowledge_pack
-):
-    pack_id = sample_knowledge_pack.id
-
-    await db_session.delete(sample_knowledge_domain)
-    await db_session.commit()
-
-    result = await db_session.get(KnowledgePack, pack_id, populate_existing=True)
-    assert result is None
-
-
-async def test_tag_creation(db_session):
-    tag = Tag(tag_name="system-design")
-    db_session.add(tag)
-    await db_session.commit()
-    await db_session.refresh(tag)
-
-    assert tag.id is not None
-    assert tag.tag_name == "system-design"
-
-
-async def test_tag_name_must_be_unique(db_session, sample_tag):
-    duplicate = Tag(tag_name=sample_tag.tag_name)
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_document_tags_relationship(db_session, sample_document, sample_tag, another_tag):
-    sample_document.tags.append(sample_tag)
-    sample_document.tags.append(another_tag)
-    db_session.add(sample_document)
-    await db_session.commit()
-    await db_session.refresh(sample_document)
-
-    assert sample_tag in sample_document.tags
-    assert another_tag in sample_document.tags
-    assert sample_document in sample_tag.documents
-
-
-async def test_deleting_document_cascades_document_tag_link(
-    db_session, sample_document, sample_tag
-):
-    sample_document.tags.append(sample_tag)
-    db_session.add(sample_document)
-    await db_session.commit()
-
-    document_id, tag_id = sample_document.id, sample_tag.id
-    await db_session.delete(sample_document)
-    await db_session.commit()
-
-    link = await db_session.get(DocumentTag, (document_id, tag_id))
-    assert link is None
-
-    remaining_tag = await db_session.get(Tag, tag_id)
-    assert remaining_tag is not None
-
-
-async def test_document_creation_unclassified(db_session, sample_document):
-    assert sample_document.id is not None
-    assert sample_document.knowledge_pack_id is None
-    assert sample_document.status == DocumentStatus.PENDING
-    assert sample_document.version == 1
-
-
-async def test_document_creation_classified(db_session, classified_document, sample_knowledge_pack):
-    assert classified_document.knowledge_pack_id == sample_knowledge_pack.id
-    assert classified_document.knowledge_pack.id == sample_knowledge_pack.id
-    assert classified_document.status == DocumentStatus.INDEXED
-
-
-async def test_document_unique_source_hash_version(db_session, sample_document):
-    duplicate = Document(
-        source=sample_document.source,
-        document_type=DocumentType.BOOK,
-        size=1,
-        content_hash=sample_document.content_hash,
-        version=sample_document.version,
-        scraped_at=sample_document.scraped_at,
-        embedding_model="text-embedding-3-large",
-        knowledge_type=sample_document.knowledge_type,
-    )
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_document_reindex_new_version_allowed(db_session, sample_document):
-    new_version = Document(
-        source=sample_document.source,
-        document_type=sample_document.document_type,
-        size=sample_document.size,
-        content_hash=sample_document.content_hash,
-        version=sample_document.version + 1,
-        scraped_at=sample_document.scraped_at,
-        embedding_model=sample_document.embedding_model,
-        knowledge_type=sample_document.knowledge_type,
-    )
-    db_session.add(new_version)
-    await db_session.commit()
-    await db_session.refresh(new_version)
-
-    assert new_version.id is not None
-    assert new_version.id != sample_document.id
-
-
-async def test_deleting_knowledge_pack_sets_document_knowledge_pack_id_null(
-    db_session, classified_document, sample_knowledge_pack
-):
-    await db_session.delete(sample_knowledge_pack)
-    await db_session.commit()
-
-    result = await db_session.get(Document, classified_document.id, populate_existing=True)
-    assert result is not None
-    assert result.knowledge_pack_id is None
-
-
-async def test_deleting_domain_cascades_to_documents_via_knowledge_pack(
-    db_session, sample_knowledge_domain, classified_document
-):
-    document_id = classified_document.id
-
-    await db_session.delete(sample_knowledge_domain)
-    await db_session.commit()
-
-    result = await db_session.get(Document, document_id, populate_existing=True)
-    assert result is not None
-    assert result.knowledge_pack_id is None
-
-
-async def test_document_chunk_creation(db_session, sample_document_chunk, classified_document):
-    assert sample_document_chunk.id is not None
-    assert sample_document_chunk.document_id == classified_document.id
-    assert repr(sample_document_chunk) == (
-        f"<DocumentChunk id={sample_document_chunk.id} "
-        f"document_id={sample_document_chunk.document_id} "
-        f"chunk_index={sample_document_chunk.chunk_index}>"
+    device = await persist(
+        db_session,
+        make_device(sample_user.id, config_bundle_id=sample_config_bundle.id),
     )
 
-
-async def test_document_chunk_unique_index_per_document(db_session, sample_document_chunk, classified_document):
-    duplicate = DocumentChunk(
-        document_id=classified_document.id,
-        chunk_index=sample_document_chunk.chunk_index,
-        qdrant_point_id="point-0002",
-        token_count=256,
-    )
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_document_chunk_qdrant_point_id_must_be_unique(db_session, sample_document_chunk, classified_document):
-    duplicate = DocumentChunk(
-        document_id=classified_document.id,
-        chunk_index=sample_document_chunk.chunk_index + 1,
-        qdrant_point_id=sample_document_chunk.qdrant_point_id,
-        token_count=256,
-    )
-    db_session.add(duplicate)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_deleting_document_cascades_chunks(db_session, sample_document_chunk, classified_document):
-    chunk_id = sample_document_chunk.id
-    await db_session.delete(classified_document)
-    await db_session.commit()
-
-    result = await db_session.get(DocumentChunk, chunk_id, populate_existing=True)
-    assert result is None
-
-
-async def test_skill_usage_event_creation(db_session, sample_skill_usage_event, sample_skill, sample_user):
-    assert sample_skill_usage_event.id is not None
-    assert sample_skill_usage_event.skill_id == sample_skill.id
-    assert sample_skill_usage_event.user_id == sample_user.id
-    assert sample_skill_usage_event.selected_at is not None
-
-
-async def test_skill_usage_event_config_bundle_is_nullable(db_session, sample_skill, sample_user):
-    event = SkillUsageEvent(skill_id=sample_skill.id, user_id=sample_user.id, config_bundle_id=None)
-    db_session.add(event)
-    await db_session.commit()
-    await db_session.refresh(event)
-
-    assert event.config_bundle_id is None
-
-
-async def test_deleting_skill_cascades_usage_events(db_session, sample_skill_usage_event, sample_skill):
-    event_id = sample_skill_usage_event.id
-    await db_session.delete(sample_skill)
-    await db_session.commit()
-
-    result = await db_session.get(SkillUsageEvent, event_id, populate_existing=True)
-    assert result is None
-
-
-async def test_deleting_config_bundle_sets_skill_usage_event_config_bundle_id_null(
-    db_session, sample_skill_usage_event, sample_config_bundle
-):
     await db_session.delete(sample_config_bundle)
     await db_session.commit()
 
-    result = await db_session.get(SkillUsageEvent, sample_skill_usage_event.id, populate_existing=True)
+    result = await db_session.get(DeviceCode, device.id, populate_existing=True)
     assert result is not None
     assert result.config_bundle_id is None
 
 
-async def test_tool_usage_event_creation(db_session, sample_tool_usage_event, sample_tool, sample_user):
-    assert sample_tool_usage_event.id is not None
-    assert sample_tool_usage_event.tool_id == sample_tool.id
-    assert sample_tool_usage_event.user_id == sample_user.id
+async def test_deleting_user_cascades_devices(db_session):
+    user = await persist(db_session, make_user())
+    device = await persist(db_session, make_device(user.id))
+    device_id = device.id
 
-
-async def test_deleting_tool_cascades_usage_events(db_session, sample_tool_usage_event, sample_tool):
-    event_id = sample_tool_usage_event.id
-    await db_session.delete(sample_tool)
+    await db_session.delete(user)
     await db_session.commit()
 
-    result = await db_session.get(ToolUsageEvent, event_id, populate_existing=True)
-    assert result is None
+    assert await db_session.get(DeviceCode, device_id, populate_existing=True) is None
 
 
-def unique_hash() -> str:
-    return uuid.uuid4().hex + uuid.uuid4().hex
+async def test_device_repr(db_session, sample_user):
+    device = await persist(db_session, make_device(sample_user.id))
+
+    text = repr(device)
+    assert f"id={device.id}" in text
+    assert f"user_id={device.user_id}" in text
+    assert "bundle=None" in text
 
 
-def make_discovered(**overrides) -> DiscoveredDocument:
-    values = dict(
-        url="https://example.com/guide",
-        url_hash=unique_hash(),
-        decision=DiscoveredDocumentDecision.ACCEPT,
-    )
-    values.update(overrides)
-    return DiscoveredDocument(**values)
+async def test_knowledge_pack_archived_defaults(sample_knowledge_pack):
+    assert sample_knowledge_pack.archived_at is None
+    assert sample_knowledge_pack.is_archived is False
 
 
-@pytest_asyncio.fixture
-async def sample_discovered_document(db_session):
-    document = make_discovered(
-        url="https://example.com/event-sourcing",
-        trust_score=0.825,
-        educational_score=0.9,
-        implementation_score=0.8,
-        authority_score=0.7,
-        document_category="tutorial",
-        reason="Covers snapshots and upcasting with a worked example.",
-    )
-    db_session.add(document)
+async def test_knowledge_pack_is_archived_flag(db_session, sample_knowledge_pack):
+    sample_knowledge_pack.archived_at = datetime.now(timezone.utc)
     await db_session.commit()
-    await db_session.refresh(document)
-    return document
+    await db_session.refresh(sample_knowledge_pack)
+
+    assert sample_knowledge_pack.is_archived is True
 
 
-async def test_discovered_document_creation(db_session, sample_discovered_document):
-    document = sample_discovered_document
+async def test_background_job_defaults(db_session):
+    job = await persist(db_session, BackgroundJob(job_type=JobType.DISCOVERY_INGEST.value))
 
-    assert document.id is not None
-    assert document.url == "https://example.com/event-sourcing"
-    assert len(document.url_hash) == 64
-    assert document.decision == DiscoveredDocumentDecision.ACCEPT
-    assert document.trust_score == pytest.approx(0.825)
-    assert document.educational_score == pytest.approx(0.9)
-    assert document.implementation_score == pytest.approx(0.8)
-    assert document.authority_score == pytest.approx(0.7)
-    assert document.document_category == "tutorial"
-    assert document.reason == "Covers snapshots and upcasting with a worked example."
-
-
-async def test_discovered_document_optional_fields_default_to_null(db_session):
-    document = make_discovered()
-    db_session.add(document)
-    await db_session.commit()
-    await db_session.refresh(document)
-
-    assert document.trust_score is None
-    assert document.educational_score is None
-    assert document.implementation_score is None
-    assert document.authority_score is None
-    assert document.document_category is None
-    assert document.reason is None
+    assert job.id is not None
+    assert job.status == JobStatus.PENDING.value
+    assert job.payload == {}
+    assert job.result is None
+    assert job.error is None
+    assert job.user_id is None
+    assert job.created_at is not None
+    assert job.started_at is None
+    assert job.finished_at is None
 
 
-async def test_discovered_document_created_at_is_set_by_database(db_session, sample_discovered_document):
-    created_at = sample_discovered_document.created_at
-
-    assert created_at is not None
-    assert created_at.tzinfo is not None
-    assert abs((datetime.now(timezone.utc) - created_at).total_seconds()) < 300
-
-
-@pytest.mark.parametrize("decision", list(DiscoveredDocumentDecision))
-async def test_discovered_document_decision_round_trip(db_session, decision):
-    document = make_discovered(decision=decision)
-    db_session.add(document)
-    await db_session.commit()
-    await db_session.refresh(document)
-
-    assert document.decision is decision
-
-
-async def test_discovered_document_can_be_filtered_by_decision(db_session):
-    accepted = make_discovered(decision=DiscoveredDocumentDecision.ACCEPT)
-    rejected = make_discovered(decision=DiscoveredDocumentDecision.REJECT)
-    db_session.add_all([accepted, rejected])
-    await db_session.commit()
-
-    result = await db_session.execute(
-        select(DiscoveredDocument.id).where(
-            DiscoveredDocument.decision == DiscoveredDocumentDecision.REJECT
-        )
+async def test_background_job_jsonb_round_trip(db_session):
+    payload = {"urls": ["https://a.example", "https://b.example"], "depth": 2, "nested": {"k": None}}
+    result = {"accepted": 1, "rejected": 1}
+    job = await persist(
+        db_session,
+        BackgroundJob(
+            job_type=JobType.SKILL_GENERATION.value,
+            payload=payload,
+            result=result,
+        ),
     )
 
-    assert result.scalars().all() == [rejected.id]
+    assert job.payload == payload
+    assert job.result == result
 
 
-async def test_discovered_document_invalid_decision_is_rejected(db_session):
-    document = make_discovered(decision="maybe")
-    db_session.add(document)
+async def test_background_job_status_transitions(db_session):
+    job = await persist(db_session, BackgroundJob(job_type=JobType.DISCOVERY_INGEST.value))
+    started = datetime.now(timezone.utc)
 
-    with pytest.raises(StatementError):
-        await db_session.commit()
-    await db_session.rollback()
+    job.status = JobStatus.RUNNING.value
+    job.started_at = started
+    await db_session.commit()
+    await db_session.refresh(job)
+    assert job.status == "running"
+    assert job.started_at == started
+
+    finished = started + timedelta(seconds=5)
+    job.status = JobStatus.FAILED.value
+    job.error = "boom"
+    job.finished_at = finished
+    await db_session.commit()
+    await db_session.refresh(job)
+    assert job.status == "failed"
+    assert job.error == "boom"
+    assert job.finished_at == finished
 
 
-async def test_discovered_document_url_hash_must_be_unique(db_session, sample_discovered_document):
-    duplicate = make_discovered(
-        url="https://different.example.com/page",
-        url_hash=sample_discovered_document.url_hash,
+async def test_background_job_type_is_required(db_session):
+    db_session.add(BackgroundJob(job_type=None))
+    await assert_commit_fails(db_session)
+
+
+async def test_background_job_accepts_arbitrary_type_and_status_strings(db_session):
+    job = await persist(
+        db_session,
+        BackgroundJob(job_type="brand_new_type", status="brand_new_status"),
     )
-    db_session.add(duplicate)
 
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
+    assert job.job_type == "brand_new_type"
+    assert job.status == "brand_new_status"
 
 
-async def test_discovered_document_same_url_with_different_hash_is_allowed(
-    db_session, sample_discovered_document
+async def test_background_job_type_longer_than_50_chars_is_rejected(db_session):
+    db_session.add(BackgroundJob(job_type="x" * 51))
+    await assert_commit_fails(db_session, DBAPIError)
+
+
+async def test_background_job_error_is_unbounded_text(db_session):
+    long_error = "traceback line\n" * 5000
+    job = await persist(
+        db_session,
+        BackgroundJob(job_type=JobType.DISCOVERY_INGEST.value, error=long_error),
+    )
+
+    assert job.error == long_error
+
+
+async def test_background_job_user_is_optional_and_set_null_on_delete(db_session):
+    user = await persist(db_session, make_user())
+    job = await persist(
+        db_session,
+        BackgroundJob(job_type=JobType.DISCOVERY_INGEST.value, user_id=user.id),
+    )
+    assert job.user_id == user.id
+
+    await db_session.delete(user)
+    await db_session.commit()
+
+    result = await db_session.get(BackgroundJob, job.id, populate_existing=True)
+    assert result is not None
+    assert result.user_id is None
+
+
+async def test_notification_for_skill(db_session, sample_user):
+    skill = await persist(db_session, make_skill())
+    notification = await persist(
+        db_session,
+        Notification(
+            user_id=sample_user.id,
+            type=NotificationType.SKILL_ARCHIVED,
+            skill_id=skill.id,
+        ),
+    )
+
+    assert notification.id is not None
+    assert notification.type == NotificationType.SKILL_ARCHIVED
+    assert notification.skill_id == skill.id
+    assert notification.tool_id is None
+    assert notification.read_at is None
+    assert notification.created_at is not None
+
+
+async def test_notification_for_tool(db_session, sample_user):
+    tool = await persist(db_session, make_tool())
+    notification = await persist(
+        db_session,
+        Notification(
+            user_id=sample_user.id,
+            type=NotificationType.TOOL_ARCHIVED,
+            tool_id=tool.id,
+        ),
+    )
+
+    assert notification.tool_id == tool.id
+    assert notification.skill_id is None
+
+
+async def test_notification_can_be_marked_read(db_session, sample_user):
+    skill = await persist(db_session, make_skill())
+    notification = await persist(
+        db_session,
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED, skill_id=skill.id),
+    )
+    now = datetime.now(timezone.utc)
+
+    notification.read_at = now
+    await db_session.commit()
+    await db_session.refresh(notification)
+
+    assert notification.read_at == now
+
+
+async def test_notification_duplicate_user_type_skill_is_rejected(db_session, sample_user):
+    skill = await persist(db_session, make_skill())
+    await persist(
+        db_session,
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED, skill_id=skill.id),
+    )
+
+    db_session.add(
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED, skill_id=skill.id)
+    )
+    await assert_commit_fails(db_session)
+
+
+async def test_notification_duplicate_user_type_tool_is_rejected(db_session, sample_user):
+    tool = await persist(db_session, make_tool())
+    await persist(
+        db_session,
+        Notification(user_id=sample_user.id, type=NotificationType.TOOL_ARCHIVED, tool_id=tool.id),
+    )
+
+    db_session.add(
+        Notification(user_id=sample_user.id, type=NotificationType.TOOL_ARCHIVED, tool_id=tool.id)
+    )
+    await assert_commit_fails(db_session)
+
+
+async def test_notification_same_skill_allowed_for_different_users(
+    db_session, sample_user, another_user
 ):
-    second = make_discovered(url=sample_discovered_document.url, url_hash=unique_hash())
-    db_session.add(second)
-    await db_session.commit()
-    await db_session.refresh(second)
-
-    assert second.id != sample_discovered_document.id
-
-
-@pytest.mark.parametrize("field", ["url", "url_hash", "decision"])
-async def test_discovered_document_required_fields_cannot_be_null(db_session, field):
-    document = make_discovered(**{field: None})
-    db_session.add(document)
-
-    with pytest.raises(IntegrityError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_discovered_document_url_hash_accepts_exactly_64_chars(db_session):
-    document = make_discovered(url_hash="f" * 64)
-    db_session.add(document)
-    await db_session.commit()
-    await db_session.refresh(document)
-
-    assert document.url_hash == "f" * 64
-
-
-async def test_discovered_document_url_hash_longer_than_64_chars_is_rejected(db_session):
-    document = make_discovered(url_hash="f" * 65)
-    db_session.add(document)
-
-    with pytest.raises(DataError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_discovered_document_category_accepts_exactly_100_chars(db_session):
-    document = make_discovered(document_category="c" * 100)
-    db_session.add(document)
-    await db_session.commit()
-    await db_session.refresh(document)
-
-    assert len(document.document_category) == 100
-
-
-async def test_discovered_document_category_longer_than_100_chars_is_rejected(db_session):
-    document = make_discovered(document_category="c" * 101)
-    db_session.add(document)
-
-    with pytest.raises(DataError):
-        await db_session.commit()
-    await db_session.rollback()
-
-
-async def test_discovered_document_url_and_reason_are_unbounded_text(db_session):
-    long_url = "https://example.com/" + "a" * 5000
-    long_reason = "reason " * 5000
-    document = make_discovered(url=long_url, reason=long_reason)
-    db_session.add(document)
-    await db_session.commit()
-    await db_session.refresh(document)
-
-    assert document.url == long_url
-    assert document.reason == long_reason
-
-
-@pytest.mark.parametrize("score", [0.0, 0.5, 1.0])
-async def test_discovered_document_score_values_round_trip(db_session, score):
-    document = make_discovered(
-        trust_score=score,
-        educational_score=score,
-        implementation_score=score,
-        authority_score=score,
-    )
-    db_session.add(document)
-    await db_session.commit()
-    await db_session.refresh(document)
-
-    assert document.trust_score == pytest.approx(score)
-    assert document.educational_score == pytest.approx(score)
-    assert document.implementation_score == pytest.approx(score)
-    assert document.authority_score == pytest.approx(score)
-
-
-async def test_discovered_document_can_be_built_from_create_schema(db_session):
-    schema = DiscoveredDocumentCreate(
-        url="https://example.com/from-schema",
-        url_hash=unique_hash(),
-        decision=DiscoveredDocumentDecision.REJECT,
-        trust_score=0.2,
-        educational_score=0.1,
-        implementation_score=0.3,
-        authority_score=0.4,
-        document_category="marketing",
-        reason="Landing page without technical content.",
+    skill = await persist(db_session, make_skill())
+    first, second = await persist(
+        db_session,
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED, skill_id=skill.id),
+        Notification(user_id=another_user.id, type=NotificationType.SKILL_ARCHIVED, skill_id=skill.id),
     )
 
-    document = DiscoveredDocument(**schema.model_dump())
-    db_session.add(document)
-    await db_session.commit()
-    await db_session.refresh(document)
-
-    assert document.id is not None
-    assert document.url == schema.url
-    assert document.url_hash == schema.url_hash
-    assert document.decision == DiscoveredDocumentDecision.REJECT
-    assert document.trust_score == pytest.approx(0.2)
-    assert document.document_category == "marketing"
-    assert document.reason == "Landing page without technical content."
+    assert first.id != second.id
 
 
-async def test_discovered_document_minimal_create_schema_is_persistable(db_session):
-    schema = DiscoveredDocumentCreate(
-        url="https://example.com/minimal",
-        url_hash=unique_hash(),
-        decision=DiscoveredDocumentDecision.ACCEPT,
+async def test_notification_different_skills_allowed_for_same_user(db_session, sample_user):
+    skill_a, skill_b = await persist(db_session, make_skill(), make_skill())
+    first, second = await persist(
+        db_session,
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED, skill_id=skill_a.id),
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED, skill_id=skill_b.id),
     )
 
-    document = DiscoveredDocument(**schema.model_dump())
-    db_session.add(document)
-    await db_session.commit()
-    await db_session.refresh(document)
+    assert first.id != second.id
 
-    assert document.trust_score is None
-    assert document.reason is None
+
+async def test_notification_without_skill_or_tool_can_repeat(db_session, sample_user):
+    first, second = await persist(
+        db_session,
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED),
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED),
+    )
+
+    assert first.id != second.id
+
+
+async def test_notification_invalid_type_is_rejected(db_session, sample_user):
+    db_session.add(Notification(user_id=sample_user.id, type="spam"))
+    await assert_commit_fails(db_session, StatementError)
+
+
+@pytest.mark.parametrize("field", ["user_id", "type"])
+async def test_notification_required_fields_cannot_be_null(db_session, sample_user, field):
+    values = dict(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED)
+    values[field] = None
+    db_session.add(Notification(**values))
+    await assert_commit_fails(db_session)
+
+
+async def test_deleting_user_cascades_notifications(db_session):
+    user = await persist(db_session, make_user())
+    notification = await persist(
+        db_session,
+        Notification(user_id=user.id, type=NotificationType.SKILL_ARCHIVED),
+    )
+    notification_id = notification.id
+
+    await db_session.delete(user)
+    await db_session.commit()
+
+    assert await db_session.get(Notification, notification_id, populate_existing=True) is None
+
+
+async def test_deleting_skill_cascades_notifications(db_session, sample_user):
+    skill = await persist(db_session, make_skill())
+    notification = await persist(
+        db_session,
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED, skill_id=skill.id),
+    )
+    notification_id = notification.id
+
+    await db_session.delete(skill)
+    await db_session.commit()
+
+    assert await db_session.get(Notification, notification_id, populate_existing=True) is None
+
+
+async def test_deleting_tool_cascades_notifications(db_session, sample_user):
+    tool = await persist(db_session, make_tool())
+    notification = await persist(
+        db_session,
+        Notification(user_id=sample_user.id, type=NotificationType.TOOL_ARCHIVED, tool_id=tool.id),
+    )
+    notification_id = notification.id
+
+    await db_session.delete(tool)
+    await db_session.commit()
+
+    assert await db_session.get(Notification, notification_id, populate_existing=True) is None
+
+
+async def test_notification_repr(db_session, sample_user):
+    notification = await persist(
+        db_session,
+        Notification(user_id=sample_user.id, type=NotificationType.SKILL_ARCHIVED),
+    )
+
+    text = repr(notification)
+    assert f"id={notification.id}" in text
+    assert f"user_id={sample_user.id}" in text
+
+
+async def test_skill_access_log_creation(db_session, sample_user, another_user):
+    skill = await persist(db_session, make_skill())
+    log = await persist(
+        db_session,
+        SkillAccessLog(
+            admin_id=another_user.id,
+            owner_id=sample_user.id,
+            skill_id=skill.id,
+            action="view",
+            note="support request",
+        ),
+    )
+
+    assert log.id is not None
+    assert log.admin_id == another_user.id
+    assert log.owner_id == sample_user.id
+    assert log.skill_id == skill.id
+    assert log.action == "view"
+    assert log.note == "support request"
+    assert log.created_at is not None
+
+
+async def test_skill_access_log_optional_fields(db_session, sample_user):
+    log = await persist(
+        db_session,
+        SkillAccessLog(owner_id=sample_user.id, action="list"),
+    )
+
+    assert log.admin_id is None
+    assert log.skill_id is None
+    assert log.note is None
+
+
+@pytest.mark.parametrize("field", ["owner_id", "action"])
+async def test_skill_access_log_required_fields_cannot_be_null(db_session, sample_user, field):
+    values = dict(owner_id=sample_user.id, action="list")
+    values[field] = None
+    db_session.add(SkillAccessLog(**values))
+    await assert_commit_fails(db_session)
+
+
+async def test_skill_access_log_action_longer_than_20_chars_is_rejected(db_session, sample_user):
+    db_session.add(SkillAccessLog(owner_id=sample_user.id, action="a" * 21))
+    await assert_commit_fails(db_session, DBAPIError)
+
+
+async def test_deleting_admin_sets_admin_id_null(db_session, sample_user):
+    admin = await persist(db_session, make_user(role=UserRole.ADMIN))
+    log = await persist(
+        db_session,
+        SkillAccessLog(admin_id=admin.id, owner_id=sample_user.id, action="archive"),
+    )
+
+    await db_session.delete(admin)
+    await db_session.commit()
+
+    result = await db_session.get(SkillAccessLog, log.id, populate_existing=True)
+    assert result is not None
+    assert result.admin_id is None
+
+
+async def test_deleting_owner_cascades_access_logs(db_session, another_user):
+    owner = await persist(db_session, make_user())
+    log = await persist(
+        db_session,
+        SkillAccessLog(admin_id=another_user.id, owner_id=owner.id, action="view"),
+    )
+    log_id = log.id
+
+    await db_session.delete(owner)
+    await db_session.commit()
+
+    assert await db_session.get(SkillAccessLog, log_id, populate_existing=True) is None
+
+
+async def test_deleting_skill_sets_access_log_skill_id_null(db_session, sample_user):
+    skill = await persist(db_session, make_skill())
+    log = await persist(
+        db_session,
+        SkillAccessLog(owner_id=sample_user.id, skill_id=skill.id, action="view"),
+    )
+
+    await db_session.delete(skill)
+    await db_session.commit()
+
+    result = await db_session.get(SkillAccessLog, log.id, populate_existing=True)
+    assert result is not None
+    assert result.skill_id is None
+
+async def test_agent_profile_skill_duplicate_link_is_rejected(db_session):
+    agent, skill = await persist(db_session, make_agent()), await persist(db_session, make_skill())
+    await persist(db_session, AgentProfileSkill(agent_id=agent.id, skill_id=skill.id))
+
+    db_session.add(AgentProfileSkill(agent_id=agent.id, skill_id=skill.id))
+    await assert_commit_fails(db_session)
+
+
+async def test_agent_profile_tool_duplicate_link_is_rejected(db_session):
+    agent, tool = await persist(db_session, make_agent()), await persist(db_session, make_tool())
+    await persist(db_session, AgentProfileTool(agent_id=agent.id, tool_id=tool.id))
+
+    db_session.add(AgentProfileTool(agent_id=agent.id, tool_id=tool.id))
+    await assert_commit_fails(db_session)
+
+
+async def test_config_bundle_skill_duplicate_link_is_rejected(db_session, sample_config_bundle):
+    skill = await persist(db_session, make_skill())
+    await persist(
+        db_session,
+        ConfigBundleSkill(config_bundle_id=sample_config_bundle.id, skill_id=skill.id),
+    )
+
+    db_session.add(ConfigBundleSkill(config_bundle_id=sample_config_bundle.id, skill_id=skill.id))
+    await assert_commit_fails(db_session)
+
+
+async def test_config_bundle_tool_duplicate_link_is_rejected(db_session, sample_config_bundle):
+    tool = await persist(db_session, make_tool())
+    await persist(
+        db_session,
+        ConfigBundleTool(config_bundle_id=sample_config_bundle.id, tool_id=tool.id),
+    )
+
+    db_session.add(ConfigBundleTool(config_bundle_id=sample_config_bundle.id, tool_id=tool.id))
+    await assert_commit_fails(db_session)
+
+
+@pytest.mark.parametrize(
+    "link_factory",
+    [
+        lambda a, o: AgentProfileSkill(agent_id=a, skill_id=o),
+        lambda a, o: AgentProfileTool(agent_id=a, tool_id=o),
+    ],
+    ids=["agent-skill", "agent-tool"],
+)
+async def test_agent_profile_link_with_missing_target_is_rejected(db_session, link_factory):
+    agent = await persist(db_session, make_agent())
+
+    db_session.add(link_factory(agent.id, 999_999))
+    await assert_commit_fails(db_session)
+
+
+async def test_deleting_agent_profile_cascades_tool_links_but_not_tool(db_session):
+    agent, tool = await persist(db_session, make_agent()), await persist(db_session, make_tool())
+    agent.tools.append(tool)
+    await db_session.commit()
+    agent_id, tool_id = agent.id, tool.id
+
+    await db_session.delete(agent)
+    await db_session.commit()
+
+    assert await db_session.get(AgentProfileTool, (agent_id, tool_id)) is None
+    assert await db_session.get(ToolDefinition, tool_id) is not None
+
+
+async def test_deleting_config_bundle_cascades_skill_and_tool_links(
+    db_session, sample_config_bundle
+):
+    skill, tool = await persist(db_session, make_skill()), await persist(db_session, make_tool())
+    sample_config_bundle.skills.append(skill)
+    sample_config_bundle.tools.append(tool)
+    await db_session.commit()
+    bundle_id, skill_id, tool_id = sample_config_bundle.id, skill.id, tool.id
+
+    await db_session.delete(sample_config_bundle)
+    await db_session.commit()
+
+    assert await db_session.get(ConfigBundleSkill, (bundle_id, skill_id)) is None
+    assert await db_session.get(ConfigBundleTool, (bundle_id, tool_id)) is None
+    assert await db_session.get(Skill, skill_id) is not None
+    assert await db_session.get(ToolDefinition, tool_id) is not None
+
+
+@pytest.mark.parametrize("target", ["agent_skill", "agent_tool", "bundle_skill", "bundle_tool"])
+async def test_deleting_linked_skill_or_tool_is_restricted(
+    db_session, sample_config_bundle, target
+):
+    agent = await persist(db_session, make_agent())
+    if target == "agent_skill":
+        victim = await persist(db_session, make_skill())
+        agent.skills.append(victim)
+    elif target == "agent_tool":
+        victim = await persist(db_session, make_tool())
+        agent.tools.append(victim)
+    elif target == "bundle_skill":
+        victim = await persist(db_session, make_skill())
+        sample_config_bundle.skills.append(victim)
+    else:
+        victim = await persist(db_session, make_tool())
+        sample_config_bundle.tools.append(victim)
+    await db_session.commit()
+
+    await db_session.delete(victim)
+    await assert_commit_fails(db_session)
+
+
+async def test_config_bundle_agent_is_restricted_on_delete(db_session, sample_config_bundle):
+    """ConfigBundle.agent_id: ondelete=RESTRICT."""
+    agent = await db_session.get(AgentProfile, sample_config_bundle.agent_id)
+
+    await db_session.delete(agent)
+    await assert_commit_fails(db_session)
+
+
+@pytest.mark.parametrize(
+    "enum_cls, expected",
+    [
+        (SkillVisibility, {"private", "pending_review", "global"}),
+        (ToolVisibility, {"global", "private"}),
+        (ToolAuthType, {"none", "api_key", "bearer", "oauth"}),
+        (UserRole, {"user", "admin", "super_admin"}),
+        (NotificationType, {"skill_archived", "tool_archived"}),
+        (JobStatusEnum, {"pending", "running", "done", "failed"}),
+        (JobTypeEnum, {"discovery_ingest", "skill_generation", "notify_skill_archived"}),
+    ],
+)
+def test_enum_values(enum_cls, expected):
+    assert {member.value for member in enum_cls} == expected
+
+
+@pytest.mark.parametrize(
+    "enum_cls",
+    [SkillVisibility, ToolVisibility, ToolAuthType, UserRole, NotificationType, JobStatusEnum, JobTypeEnum],
+)
+def test_enums_are_str_enums(enum_cls):
+    for member in enum_cls:
+        assert isinstance(member, str)
+        assert member == member.value
+
+
+def test_job_enums_in_model_module_match_standalone_enums():
+    assert {m.name: m.value for m in JobStatus} == {m.name: m.value for m in JobStatusEnum}
+    assert {m.name: m.value for m in JobType} == {m.name: m.value for m in JobTypeEnum}

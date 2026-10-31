@@ -21,5 +21,8 @@ from . import (
     tool_usage_events,
     tools_definition,
     users,
-    discovered_document
+    discovered_document,
+    background_jobs,
+    notification,
+    skill_access_logs,
 )

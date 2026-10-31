@@ -1,58 +1,58 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Index, Integer, String
+from sqlalchemy import DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql import func
+
 from src.db.db_connection import Base
-from src.db.enums.device_code_status import DeviceStatus
 
 
 class DeviceCode(Base):
-    __tablename__ = "device_codes"
 
-    id: Mapped[int] = mapped_column(
-        Integer,
-        primary_key=True,
-        autoincrement=True,
-    )
-    device_code: Mapped[str] = mapped_column(
-        String(100),
-        unique=True,
-        nullable=False,
-    )
+    __tablename__ = "devices"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    
-    status: Mapped[DeviceStatus] = mapped_column(
-        Enum(
-            DeviceStatus,
-            name="device_status",
-        ),
-        nullable=False,
-        default=DeviceStatus.PENDING,
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    config_bundle_id: Mapped[int | None] = mapped_column(
+        ForeignKey("config_bundles.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
-    scope: Mapped[str] = mapped_column(
-        String(200),
+
+    token_hash: Mapped[str] = mapped_column(
+        String(64),
+        unique=True,
         nullable=False,
     )
+
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
     )
-    interval: Mapped[int] = mapped_column(
-        Integer,
+
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    last_used_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
         nullable=False,
     )
 
-    __table_args__ = (
-        Index("ix_device_codes_status_expires_at", "status", "expires_at"),
-    )
-
     def __repr__(self):
-        return (
-            f"<DeviceCode(id={self.id}, device_code='{self.device_code}', "
-            f"user_id={self.user_id}, scope='{self.scope}', "
-            f"expires_at={self.expires_at}, interval={self.interval})>"
-        )
+        return f"<Device id={self.id} user_id={self.user_id} bundle={self.config_bundle_id}>"

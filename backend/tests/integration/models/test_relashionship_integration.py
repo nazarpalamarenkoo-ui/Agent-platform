@@ -1,5 +1,6 @@
 import pytest
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from src.db.models.config_bundles import ConfigBundle
 from src.db.models.agent_profiles import AgentProfile
@@ -8,6 +9,32 @@ from src.db.models.tools_definition import ToolDefinition
 
 
 pytestmark = pytest.mark.integration
+
+
+async def load_skill(session, skill_id):
+    result = await session.execute(
+        select(Skill)
+        .where(Skill.id == skill_id)
+        .options(
+            selectinload(Skill.config_bundles),
+            selectinload(Skill.agent_profiles),
+        )
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one()
+
+
+async def load_tool(session, tool_id):
+    result = await session.execute(
+        select(ToolDefinition)
+        .where(ToolDefinition.id == tool_id)
+        .options(
+            selectinload(ToolDefinition.config_bundles),
+            selectinload(ToolDefinition.agent_profiles),
+        )
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one()
 
 
 class TestConfigBundleSkillRelationship:
@@ -20,7 +47,9 @@ class TestConfigBundleSkillRelationship:
         await db_session.commit()
 
         result = await db_session.execute(
-            select(ConfigBundle).where(ConfigBundle.id == sample_config_bundle.id)
+            select(ConfigBundle)
+            .where(ConfigBundle.id == sample_config_bundle.id)
+            .execution_options(populate_existing=True)
         )
         reloaded_bundle = result.scalar_one()
         assert {s.id for s in reloaded_bundle.skills} == {
@@ -28,13 +57,8 @@ class TestConfigBundleSkillRelationship:
             another_skill.id,
         }
 
-        result = await db_session.execute(
-            select(Skill).where(Skill.id == sample_skill.id)
-        )
-        reloaded_skill = result.scalar_one()
-        assert sample_config_bundle.id in {
-            cb.id for cb in reloaded_skill.config_bundles
-        }
+        reloaded_skill = await load_skill(db_session, sample_skill.id)
+        assert sample_config_bundle.id in {cb.id for cb in reloaded_skill.config_bundles}
 
     async def test_removing_skill_from_bundle_does_not_delete_skill(
         self, db_session, config_bundle_with_skill_and_tool, sample_skill
@@ -50,7 +74,9 @@ class TestConfigBundleSkillRelationship:
         await db_session.commit()
 
         result = await db_session.execute(
-            select(ConfigBundle).where(ConfigBundle.id == bundle_id)
+            select(ConfigBundle)
+            .where(ConfigBundle.id == bundle_id)
+            .execution_options(populate_existing=True)
         )
         reloaded_bundle = result.scalar_one()
         assert sample_skill.id not in {s.id for s in reloaded_bundle.skills}
@@ -70,7 +96,9 @@ class TestConfigBundleToolRelationship:
         await db_session.commit()
 
         result = await db_session.execute(
-            select(ConfigBundle).where(ConfigBundle.id == sample_config_bundle.id)
+            select(ConfigBundle)
+            .where(ConfigBundle.id == sample_config_bundle.id)
+            .execution_options(populate_existing=True)
         )
         reloaded_bundle = result.scalar_one()
         assert {t.id for t in reloaded_bundle.tools} == {
@@ -78,13 +106,8 @@ class TestConfigBundleToolRelationship:
             another_tool.id,
         }
 
-        result = await db_session.execute(
-            select(ToolDefinition).where(ToolDefinition.id == sample_tool.id)
-        )
-        reloaded_tool = result.scalar_one()
-        assert sample_config_bundle.id in {
-            cb.id for cb in reloaded_tool.config_bundles
-        }
+        reloaded_tool = await load_tool(db_session, sample_tool.id)
+        assert sample_config_bundle.id in {cb.id for cb in reloaded_tool.config_bundles}
 
     async def test_removing_tool_from_bundle_does_not_delete_tool(
         self, db_session, config_bundle_with_skill_and_tool, sample_tool
@@ -100,7 +123,9 @@ class TestConfigBundleToolRelationship:
         await db_session.commit()
 
         result = await db_session.execute(
-            select(ConfigBundle).where(ConfigBundle.id == bundle_id)
+            select(ConfigBundle)
+            .where(ConfigBundle.id == bundle_id)
+            .execution_options(populate_existing=True)
         )
         reloaded_bundle = result.scalar_one()
         assert sample_tool.id not in {t.id for t in reloaded_bundle.tools}
@@ -121,7 +146,9 @@ class TestAgentProfileSkillRelationship:
         await db_session.commit()
 
         result = await db_session.execute(
-            select(AgentProfile).where(AgentProfile.id == sample_agent_profile.id)
+            select(AgentProfile)
+            .where(AgentProfile.id == sample_agent_profile.id)
+            .execution_options(populate_existing=True)
         )
         reloaded_agent = result.scalar_one()
         assert {s.id for s in reloaded_agent.skills} == {
@@ -129,13 +156,8 @@ class TestAgentProfileSkillRelationship:
             another_skill.id,
         }
 
-        result = await db_session.execute(
-            select(Skill).where(Skill.id == sample_skill.id)
-        )
-        reloaded_skill = result.scalar_one()
-        assert sample_agent_profile.id in {
-            ap.id for ap in reloaded_skill.agent_profiles
-        }
+        reloaded_skill = await load_skill(db_session, sample_skill.id)
+        assert sample_agent_profile.id in {ap.id for ap in reloaded_skill.agent_profiles}
 
 
 class TestAgentProfileToolRelationship:
@@ -148,7 +170,9 @@ class TestAgentProfileToolRelationship:
         await db_session.commit()
 
         result = await db_session.execute(
-            select(AgentProfile).where(AgentProfile.id == sample_agent_profile.id)
+            select(AgentProfile)
+            .where(AgentProfile.id == sample_agent_profile.id)
+            .execution_options(populate_existing=True)
         )
         reloaded_agent = result.scalar_one()
         assert {t.id for t in reloaded_agent.tools} == {
@@ -156,13 +180,8 @@ class TestAgentProfileToolRelationship:
             another_tool.id,
         }
 
-        result = await db_session.execute(
-            select(ToolDefinition).where(ToolDefinition.id == sample_tool.id)
-        )
-        reloaded_tool = result.scalar_one()
-        assert sample_agent_profile.id in {
-            ap.id for ap in reloaded_tool.agent_profiles
-        }
+        reloaded_tool = await load_tool(db_session, sample_tool.id)
+        assert sample_agent_profile.id in {ap.id for ap in reloaded_tool.agent_profiles}
 
 
 class TestSharedSkillsAndToolsAcrossMultipleParents:
@@ -179,17 +198,10 @@ class TestSharedSkillsAndToolsAcrossMultipleParents:
         db_session.add_all([sample_config_bundle, sample_agent_profile])
         await db_session.commit()
 
-        result = await db_session.execute(
-            select(Skill).where(Skill.id == sample_skill.id)
-        )
-        reloaded_skill = result.scalar_one()
+        reloaded_skill = await load_skill(db_session, sample_skill.id)
 
-        assert sample_config_bundle.id in {
-            cb.id for cb in reloaded_skill.config_bundles
-        }
-        assert sample_agent_profile.id in {
-            ap.id for ap in reloaded_skill.agent_profiles
-        }
+        assert sample_config_bundle.id in {cb.id for cb in reloaded_skill.config_bundles}
+        assert sample_agent_profile.id in {ap.id for ap in reloaded_skill.agent_profiles}
 
     async def test_same_tool_can_belong_to_bundle_and_agent_profile(
         self,
@@ -203,14 +215,7 @@ class TestSharedSkillsAndToolsAcrossMultipleParents:
         db_session.add_all([sample_config_bundle, sample_agent_profile])
         await db_session.commit()
 
-        result = await db_session.execute(
-            select(ToolDefinition).where(ToolDefinition.id == sample_tool.id)
-        )
-        reloaded_tool = result.scalar_one()
+        reloaded_tool = await load_tool(db_session, sample_tool.id)
 
-        assert sample_config_bundle.id in {
-            cb.id for cb in reloaded_tool.config_bundles
-        }
-        assert sample_agent_profile.id in {
-            ap.id for ap in reloaded_tool.agent_profiles
-        }
+        assert sample_config_bundle.id in {cb.id for cb in reloaded_tool.config_bundles}
+        assert sample_agent_profile.id in {ap.id for ap in reloaded_tool.agent_profiles}
