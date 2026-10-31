@@ -3,6 +3,7 @@ from pydantic import BaseModel
 class SkillCreate(BaseModel):
     skill_name: str
     description: str
+    content: str
     domain_ids: list[int] = []
 
 class SkillRead(BaseModel):

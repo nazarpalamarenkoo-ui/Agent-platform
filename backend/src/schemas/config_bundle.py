@@ -1,4 +1,3 @@
-# config_bundle.py
 from pydantic import BaseModel
 from src.schemas.agent import SkillRead, ToolRead
 from src.schemas.knowledge_pack import KnowledgePackRead
@@ -15,7 +14,9 @@ class ConfigBundleFromAgent(BaseModel):
     agent_id: int
     name: str
     description: str
-
+class ConfigBundleClone(BaseModel):
+    name: str
+    description: str | None = None
 class ConfigBundleRead(BaseModel):
     id: int
     user_id: int
