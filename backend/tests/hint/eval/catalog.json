@@ -1,0 +1,48 @@
+{
+"profiles": [
+  {"id": 1, "name": "Architect", "description": "Designs software systems: architecture, diagrams and trade-offs"},
+  {"id": 2, "name": "Tester", "description": "Plans and writes automated tests and QA strategies"},
+  {"id": 3, "name": "Data Engineer", "description": "Builds data pipelines, ETL jobs and warehouses"},
+  {"id": 4, "name": "Backend Developer", "description": "Builds server-side APIs and services"},
+  {"id": 5, "name": "DevOps Engineer", "description": "Automates deployment, infrastructure, CI/CD and containers"},
+  {"id": 6, "name": "Custom Agent", "description": "Blank profile with no preset skills or tools; the user builds everything from scratch"}
+],
+"skills": [
+  {"id": 1, "name": "UML Diagrams", "description": "Create and read UML class, sequence and component diagrams"},
+  {"id": 2, "name": "System Design", "description": "Design scalable systems: components, data flow and trade-offs"},
+  {"id": 3, "name": "Docker Basics", "description": "Build images, run containers and write Dockerfiles"},
+  {"id": 4, "name": "Docker Compose", "description": "Define and run multi-container applications"},
+  {"id": 5, "name": "Kubernetes Deployment", "description": "Deploy and scale workloads on Kubernetes"},
+  {"id": 6, "name": "Python Testing", "description": "Write unit and integration tests with pytest"},
+  {"id": 7, "name": "REST API Design", "description": "Design consistent REST APIs: resources, status codes, versioning"},
+  {"id": 8, "name": "SQL Optimization", "description": "Analyze query plans and speed up slow SQL queries"},
+  {"id": 9, "name": "PostgreSQL Administration", "description": "Configure, back up and tune PostgreSQL"},
+  {"id": 10, "name": "ETL Pipelines", "description": "Design extract-transform-load data pipelines"},
+  {"id": 11, "name": "Git Workflow", "description": "Branching strategies, commits and pull requests"},
+  {"id": 12, "name": "Code Review", "description": "Review code for correctness, readability and maintainability"},
+  {"id": 13, "name": "Security Review", "description": "Find common vulnerabilities (OWASP Top 10) and apply secure coding"},
+  {"id": 14, "name": "CI/CD Pipelines", "description": "Automate build, test and release with pipelines"},
+  {"id": 15, "name": "Technical Writing", "description": "Write clear documentation, READMEs and guides"},
+  {"id": 16, "name": "Prompt Engineering", "description": "Write effective prompts and evaluate LLM outputs"}
+],
+"tools": [
+  {"id": 1, "name": "UML Renderer", "description": "Renders UML and Mermaid diagrams from text"},
+  {"id": 2, "name": "Docker", "description": "Manage containers and images through the Docker engine"},
+  {"id": 3, "name": "GitHub", "description": "Work with repositories, issues and pull requests"},
+  {"id": 4, "name": "PostgreSQL", "description": "Run SQL queries against PostgreSQL databases"},
+  {"id": 5, "name": "Filesystem", "description": "Read and write files in the project directory"},
+  {"id": 6, "name": "Browser Automation", "description": "Drive a web browser for end-to-end tests and scraping"}
+],
+"packs": [
+  {"id": 1, "name": "Docker Documentation", "description": "Official Docker documentation: images, containers, networking, compose"},
+  {"id": 2, "name": "Kubernetes Documentation", "description": "Official Kubernetes documentation: workloads, services, configuration"},
+  {"id": 3, "name": "Python Documentation", "description": "Python language and standard library reference"},
+  {"id": 4, "name": "PostgreSQL Documentation", "description": "PostgreSQL manual: SQL, indexing, administration"},
+  {"id": 5, "name": "UML Reference", "description": "UML notation reference for all diagram types"},
+  {"id": 6, "name": "FastAPI Documentation", "description": "FastAPI framework guide and API reference"},
+  {"id": 7, "name": "REST API Guidelines", "description": "Best practices and conventions for designing REST APIs"},
+  {"id": 8, "name": "SKILL.md Specification", "description": "Specification and best practices for writing SKILL.md files"},
+  {"id": 9, "name": "pytest Documentation", "description": "pytest user guide: fixtures, parametrization, plugins"},
+  {"id": 10, "name": "OWASP Cheat Sheets", "description": "OWASP security cheat sheets for secure development"}
+]
+}
