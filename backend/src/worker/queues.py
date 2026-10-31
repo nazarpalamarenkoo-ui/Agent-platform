@@ -1,0 +1,1 @@
+INGESTION_QUEUE = "arq:queue:ingestion"
