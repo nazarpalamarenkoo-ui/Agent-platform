@@ -13,11 +13,65 @@ services:
       - .env
     environment:
       - SERVICE_NAME=platform-api
+      - REDIS_URL=redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
       qdrant:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: /api
+    image: platform-frontend:latest
+    ports:
+      - "3000:80"
+    depends_on:
+      - app
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: platform-backend:latest
+    command: arq src.worker.arq_worker.WorkerSettings
+    volumes:
+      - ./backend:/app
+      - hf_cache:/root/.cache/huggingface
+    env_file:
+      - .env
+    environment:
+      - SERVICE_NAME=platform-worker
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      searxng:
+        condition: service_started
+    stop_grace_period: 150s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
     restart: unless-stopped
 
   postgres:
@@ -61,10 +115,40 @@ services:
       - SEARXNG_BASE_URL=http://localhost:8080
     restart: unless-stopped
 
+  llama-judge:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./models:/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    command: >
+      -m /models/qwen2.5-3b-instruct-q4_k_m.gguf
+      --alias qwen2.5-3b-instruct
+      -ngl 999
+      -c 8192
+      --host 0.0.0.0
+      --port 8080
+    ports:
+      - "8081:8080"
+
 volumes:
   postgres_data:
     name: backend_postgres_data
   qdrant_data:
     name: backend_qdrant_data
+  redis_data:
+    name: backend_redis_data
   hf_cache:
     name: backend_hf_cache
