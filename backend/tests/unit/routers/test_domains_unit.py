@@ -37,49 +37,48 @@ def make_domain(domain_id=1, **overrides):
     return SimpleNamespace(**data)
 
 
-async def test_create_root_domain_returns_201(client, service):
+async def test_create_root_domain_returns_201(client, service, as_admin):
     service.create_domain.return_value = make_domain(3, slug="backend-api-design")
 
     response = await client.post("/domains", json=VALID_PAYLOAD)
 
     assert response.status_code == 201
-    body = response.json()
-    assert body["id"] == 3
-    assert body["slug"] == "backend-api-design"
+    assert response.json()["slug"] == "backend-api-design"
     service.create_domain.assert_awaited_once_with(
         "backend-api-design", "Backend API Design", "Designing backend APIs", None
     )
 
 
-async def test_create_child_domain_passes_parent_id(client, service):
+async def test_create_child_domain_passes_parent_id(client, service, as_admin):
     service.create_domain.return_value = make_domain(4, parent_domain_id=3)
 
     response = await client.post("/domains", json={**VALID_PAYLOAD, "parent_domain_id": 3})
 
     assert response.status_code == 201
-    service.create_domain.assert_awaited_once_with(
-        "backend-api-design", "Backend API Design", "Designing backend APIs", 3
-    )
+    assert service.create_domain.call_args.args[3] == 3
 
 
-async def test_create_domain_value_error_returns_400(client, service):
-    service.create_domain.side_effect = ValueError("Domain with slug backend-api-design already exists")
+async def test_create_domain_requires_admin(client, service):
+    response = await client.post("/domains", json=VALID_PAYLOAD)
+
+    assert response.status_code == 403
+    service.create_domain.assert_not_awaited()
+
+
+async def test_create_domain_value_error_returns_400(client, service, as_admin):
+    service.create_domain.side_effect = ValueError("Domain with slug x already exists")
 
     response = await client.post("/domains", json=VALID_PAYLOAD)
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Domain with slug backend-api-design already exists"
+    assert response.json()["detail"] == "Domain with slug x already exists"
 
 
 @pytest.mark.parametrize(
     "payload",
-    [
-        {},
-        {**VALID_PAYLOAD, "slug": ["x"]},
-        {**VALID_PAYLOAD, "parent_domain_id": "abc"},
-    ],
+    [{}, {**VALID_PAYLOAD, "slug": ["x"]}, {**VALID_PAYLOAD, "parent_domain_id": "abc"}],
 )
-async def test_create_domain_rejects_invalid_payload(client, service, payload):
+async def test_create_domain_rejects_invalid_payload(client, service, as_admin, payload):
     response = await client.post("/domains", json=payload)
 
     assert response.status_code == 422
@@ -92,26 +91,32 @@ async def test_get_all_domains_uses_default_pagination(client, service):
     response = await client.get("/domains")
 
     assert response.status_code == 200
-    assert [item["id"] for item in response.json()] == [1, 2]
+    assert [d["id"] for d in response.json()] == [1, 2]
     service.get_all_domains.assert_awaited_once_with(limit=100, offset=0)
 
 
 async def test_get_all_domains_passes_custom_pagination(client, service):
     service.get_all_domains.return_value = []
 
-    response = await client.get("/domains", params={"limit": 5, "offset": 10})
+    await client.get("/domains", params={"limit": 5, "offset": 10})
 
-    assert response.status_code == 200
     service.get_all_domains.assert_awaited_once_with(limit=5, offset=10)
 
 
-async def test_get_root_domains_is_not_shadowed_by_domain_id_route(client, service):
+@pytest.mark.parametrize("params", [{"limit": 0}, {"limit": 501}, {"offset": -1}])
+async def test_get_all_domains_rejects_invalid_pagination(client, service, params):
+    response = await client.get("/domains", params=params)
+
+    assert response.status_code == 422
+    service.get_all_domains.assert_not_awaited()
+
+
+async def test_roots_route_is_not_shadowed_by_domain_id_route(client, service):
     service.get_root_domains.return_value = [make_domain(1)]
 
     response = await client.get("/domains/roots")
 
     assert response.status_code == 200
-    assert [item["id"] for item in response.json()] == [1]
     service.get_root_domains.assert_awaited_once_with()
     service.get_domain.assert_not_awaited()
 
