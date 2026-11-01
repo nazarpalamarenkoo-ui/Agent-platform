@@ -1,5 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock, patch
-
+import logging
 import httpx
 import pytest
 from openai import APIError, RateLimitError
@@ -28,10 +28,11 @@ def make_api_error():
     return APIError("boom", request=httpx.Request("POST", "http://test"), body=None)
 
 
-def make_response(content):
+def make_response(content, finish_reason="stop"):
     resp = MagicMock()
     resp.choices = [MagicMock()]
     resp.choices[0].message.content = content
+    resp.choices[0].finish_reason = finish_reason
     return resp
 
 
@@ -74,7 +75,8 @@ class TestInit:
         assert client.model == DEFAULT_MODEL
         assert client.max_retries == 3
         assert client.retry_delay == 2.0
-
+        assert client.max_tokens == 4000
+        
     def test_custom_settings(self, mock_openai_cls):
         c = LLMClient(api_key="k", model="m", max_retries=5, retry_delay=0.5)
         assert (c.model, c.max_retries, c.retry_delay) == ("m", 5, 0.5)
@@ -101,14 +103,37 @@ class TestComplete:
             {"role": "user", "content": "user text"}
         ]
 
-    async def test_passes_model_and_max_tokens(self, mock_openai_cls):
+    async def test_passes_model_and_default_max_tokens(self, mock_openai_cls):
         c = LLMClient(api_key="k", model="custom-model")
         create = c._client.chat.completions.create
 
         await c.complete("hi")
 
         assert create.call_args.kwargs["model"] == "custom-model"
-        assert create.call_args.kwargs["max_tokens"] == 2000
+        assert create.call_args.kwargs["max_tokens"] == 4000
+
+    async def test_custom_max_tokens_is_passed(self, mock_openai_cls):
+        c = LLMClient(api_key="k", max_tokens=123)
+        create = c._client.chat.completions.create
+
+        await c.complete("hi")
+
+        assert c.max_tokens == 123
+        assert create.call_args.kwargs["max_tokens"] == 123
+
+    async def test_truncated_response_is_returned_with_warning(self, client, create, caplog):
+        create.return_value = make_response('{"a":', finish_reason="length")
+
+        with caplog.at_level(logging.WARNING):
+            result = await client.complete("hi")
+
+        assert result == '{"a":'
+        assert "truncated" in caplog.text
+
+    async def test_none_content_becomes_empty_string(self, client, create):
+        create.return_value = make_response(None)
+
+        assert await client.complete("hi") == ""
 
     async def test_single_call_on_success(self, client, create, mock_sleep):
         await client.complete("hi")

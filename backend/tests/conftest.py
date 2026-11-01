@@ -1,34 +1,27 @@
+import os
 import asyncio
-import sys
-import pytest
-
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
-import pytest_asyncio
-from unittest.mock import AsyncMock
-from fastapi import FastAPI
-from pydantic import BaseModel
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
-from sqlalchemy.pool import NullPool
-from sqlalchemy import text
-from contextlib import asynccontextmanager
 import enum
+import itertools
+import sys
 import types
 import typing
 import uuid
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
+import pytest
+import pytest_asyncio
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
+
+from src.api.auth import auth as main_auth
+from src.api.auth.admin import auth as admin_auth
 from src.db.db_connection import Base
 from src.db.models.users import User
 from src.db.models.agent_profiles import AgentProfile
@@ -36,7 +29,6 @@ from src.db.models.skills import Skill
 from src.db.models.tools_definition import ToolDefinition
 from src.db.models.config_bundles import ConfigBundle
 from src.db.models.token_usage_events import TokenUsageEvent
-from src.db.models.device_code import DeviceCode
 from src.db.models.knowledge_domains import KnowledgeDomain
 from src.db.models.knowledge_packs import KnowledgePack
 from src.db.models.tags import Tag
@@ -53,12 +45,40 @@ from src.db.models.config_bundle_knowledge_packs import ConfigBundleKnowledgePac
 from src.db.models.document_tags import DocumentTag
 from src.db.models.skills_domain import SkillDomain
 from src.db.models.tool_domain import ToolDomain
+from src.db.models.device_code import DeviceCode
 
-from src.db.enums.device_code_status import DeviceStatus
+
+def _import_all_models():
+    """Імпортує всі модулі в src.db.models, щоб Base.metadata знала про всі таблиці
+    (notifications, background_jobs тощо), інакше create_all їх не створить."""
+    import importlib
+    import pkgutil
+
+    import src.db.models as models_pkg
+
+    for module in pkgutil.walk_packages(models_pkg.__path__, prefix=f"{models_pkg.__name__}."):
+        importlib.import_module(module.name)
+
+
+_import_all_models()
+
 from src.db.enums.document_status import DocumentStatus
 from src.db.enums.document_type import DocumentType
 from src.db.enums.knowledge_types import KnowledgeType
+from src.db.enums.skill_visibility import SkillVisibility
+from src.db.enums.tool_visibility import ToolVisibility
+from src.schemas.user import UserRead
 from src.test_config import test_settings
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
 
 TEST_DATABASE = test_settings.TEST_DATABASE_URL
@@ -69,7 +89,8 @@ async def db_engine():
     engine = create_async_engine(TEST_DATABASE, echo=False, poolclass=NullPool)
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+        await conn.execute(text("DROP SCHEMA public CASCADE"))
+        await conn.execute(text("CREATE SCHEMA public"))
         await conn.run_sync(Base.metadata.create_all)
 
     yield engine
@@ -230,6 +251,7 @@ async def sample_skill(db_session):
     skill = Skill(
         skill_name="summarization",
         description="Summarize text",
+        visibility=SkillVisibility.GLOBAL,
     )
     db_session.add(skill)
     await db_session.commit()
@@ -242,6 +264,7 @@ async def another_skill(db_session):
     skill = Skill(
         skill_name="translation",
         description="Translate text skill",
+        visibility=SkillVisibility.GLOBAL,
     )
     db_session.add(skill)
     await db_session.commit()
@@ -263,6 +286,7 @@ async def sample_tool(db_session):
     tool = ToolDefinition(
         tool_name="web_search",
         description="Searching info in internet",
+        url="https://example.com/web-search",
     )
     db_session.add(tool)
     await db_session.commit()
@@ -275,6 +299,7 @@ async def another_tool(db_session):
     tool = ToolDefinition(
         tool_name="code_execution",
         description="Test code in sandbox",
+        url="https://example.com/code-execution",
     )
     db_session.add(tool)
     await db_session.commit()
@@ -287,6 +312,7 @@ async def domain_scoped_tool(db_session, another_knowledge_domain):
     tool = ToolDefinition(
         tool_name="c_driver_docs_tool",
         description="Live docs lookup scoped to driver development",
+        url="https://example.com/c-driver-docs",
     )
     tool.domains.append(another_knowledge_domain)
     db_session.add(tool)
@@ -355,38 +381,6 @@ async def sample_token_usage_event(db_session, sample_user, sample_agent_profile
     await db_session.commit()
     await db_session.refresh(event)
     return event
-
-
-@pytest_asyncio.fixture
-async def sample_device_code(db_session, sample_user):
-    device_code = DeviceCode(
-        device_code="ABCD-1234",
-        user_id=sample_user.id,
-        status=DeviceStatus.PENDING,
-        scope="read write",
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
-        interval=5,
-    )
-    db_session.add(device_code)
-    await db_session.commit()
-    await db_session.refresh(device_code)
-    return device_code
-
-
-@pytest_asyncio.fixture
-async def approved_device_code(db_session, sample_user):
-    device_code = DeviceCode(
-        device_code="EFGH-5678",
-        user_id=sample_user.id,
-        status=DeviceStatus.APPROVED,
-        scope="read write",
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
-        interval=5,
-    )
-    db_session.add(device_code)
-    await db_session.commit()
-    await db_session.refresh(device_code)
-    return device_code
 
 
 @pytest_asyncio.fixture
@@ -508,9 +502,18 @@ def service(app, request):
     return mock
 
 
+@pytest.fixture
+def override(app):
+    def _set(dependency, value):
+        app.dependency_overrides[dependency] = lambda: value
+        return value
+
+    return _set
+
+
 @pytest_asyncio.fixture
 async def client(app):
-    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    transport = ASGITransport(app=app, raise_app_exceptions=bool(os.environ.get("RAISE_APP_EXCEPTIONS")))
     async with AsyncClient(transport=transport, base_url="http://testserver") as http_client:
         yield http_client
 
@@ -586,3 +589,213 @@ def fake():
         return SimpleNamespace(**_fake_values(schema, overrides))
 
     return build
+
+@pytest.fixture(autouse=True)
+def current_user(request, fake):
+    if not hasattr(request.module, "ROUTER"):
+        return None
+
+    app = request.getfixturevalue("app")
+    user = fake(UserRead, id=1, username="testuser", email="testuser@example.com")
+    user.is_admin = False
+    user.is_super_admin = False
+
+    for dependency in (main_auth.get_current_user, admin_auth.get_current_user):
+        app.dependency_overrides[dependency] = lambda: user
+    return user
+
+
+@pytest.fixture
+def actor(current_user):
+    return current_user
+
+
+@pytest.fixture
+def default_actor(request, app, fake):
+    # unit-тести (є ROUTER): той самий current_user, що й раніше
+    if hasattr(request.module, "ROUTER"):
+        return request.getfixturevalue("current_user")
+
+    # integration-тести (немає ROUTER): створюємо юзера самі
+    user = fake(UserRead, id=1, username="testuser", email="testuser@example.com")
+    user.is_admin = False
+    user.is_super_admin = False
+    for dependency in (main_auth.get_current_user, admin_auth.get_current_user):
+        app.dependency_overrides[dependency] = lambda: user
+    return user
+
+
+@pytest.fixture
+def as_admin(default_actor):
+    default_actor.is_admin = True
+    return default_actor
+
+
+@pytest.fixture
+def admin(as_admin):
+    return as_admin
+
+
+@pytest.fixture
+def as_super_admin(default_actor):
+    default_actor.is_admin = True
+    default_actor.is_super_admin = True
+    return default_actor
+
+
+@pytest.fixture
+def assert_missing():
+    def _check(response):
+        assert response.status_code in (400, 404), response.text
+
+    return _check
+
+_seq = itertools.count(1)
+
+
+@pytest_asyncio.fixture
+async def make_user(db_session):
+    async def factory(**overrides):
+        n = next(_seq)
+        data = dict(
+            username=f"user-{n}",
+            email=f"user-{n}@example.com",
+            password_hash="hashed",
+        )
+        data.update(overrides)
+        user = User(**data)
+        db_session.add(user)
+        await db_session.commit()
+        await db_session.refresh(user)
+        return user
+
+    return factory
+
+
+@pytest_asyncio.fixture
+async def make_agent(db_session):
+    async def factory(**overrides):
+        n = next(_seq)
+        data = dict(agent_name=f"agent-{n}", description=f"Agent {n}")
+        data.update(overrides)
+        agent = AgentProfile(**data)
+        db_session.add(agent)
+        await db_session.commit()
+        await db_session.refresh(agent)
+        return agent
+
+    return factory
+
+
+@pytest_asyncio.fixture
+async def make_bundle(db_session):
+    async def factory(user, agent, **overrides):
+        n = next(_seq)
+        data = dict(
+            user_id=user.id,
+            agent_id=agent.id,
+            name=f"bundle-{n}",
+            description=f"Bundle {n}",
+        )
+        data.update(overrides)
+        bundle = ConfigBundle(**data)
+        db_session.add(bundle)
+        await db_session.commit()
+        await db_session.refresh(bundle)
+        return bundle
+
+    return factory
+
+
+@pytest_asyncio.fixture
+async def make_skill(db_session):
+    async def factory(owner=None, **overrides):
+        n = next(_seq)
+        default_visibility = (
+            SkillVisibility.GLOBAL if owner is None else SkillVisibility.PRIVATE
+        )
+        data = dict(
+            skill_name=f"skill-{n}",
+            description=f"Skill {n}",
+            content=f"content of skill {n}",
+            content_hash=f"{n:064d}",
+            visibility=overrides.pop("visibility", default_visibility),
+            owner_id=owner.id if owner is not None else None,
+        )
+        data.update(overrides)
+        skill = Skill(**data)
+        db_session.add(skill)
+        await db_session.commit()
+        await db_session.refresh(skill)
+        return skill
+
+    return factory
+
+
+@pytest_asyncio.fixture
+async def make_tool(db_session):
+    async def factory(owner=None, **overrides):
+        n = next(_seq)
+        default_visibility = (
+            ToolVisibility.GLOBAL if owner is None else ToolVisibility.PRIVATE
+        )
+        data = dict(
+            tool_name=f"tool-{n}",
+            description=f"Tool {n}",
+            url=f"https://example.com/tool-{n}",
+            visibility=overrides.pop("visibility", default_visibility),
+            owner_id=owner.id if owner is not None else None,
+        )
+        data.update(overrides)
+        tool = ToolDefinition(**data)
+        db_session.add(tool)
+        await db_session.commit()
+        await db_session.refresh(tool)
+        return tool
+
+    return factory
+
+
+@pytest_asyncio.fixture
+async def make_pack(db_session):
+    async def factory(domain, **overrides):
+        n = next(_seq)
+        data = dict(
+            slug=f"pack-{n}",
+            name=f"Pack {n}",
+            domain_id=domain.id,
+            description=f"Pack {n}",
+        )
+        data.update(overrides)
+        pack = KnowledgePack(**data)
+        db_session.add(pack)
+        await db_session.commit()
+        await db_session.refresh(pack)
+        return pack
+
+    return factory
+
+
+@pytest_asyncio.fixture
+async def make_device_code(db_session, sample_user):
+    async def factory(user=None, **overrides):
+        n = next(_seq)
+        data = dict(
+            user_id=(user or sample_user).id,
+            name=f"device-{n}",
+            token_hash=f"{n:064x}",
+            expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+        )
+        data.update(overrides)
+        device = DeviceCode(**data)
+        db_session.add(device)
+        await db_session.commit()
+        await db_session.refresh(device)
+        return device
+
+    return factory
+
+
+@pytest_asyncio.fixture
+async def sample_device_code(make_device_code):
+    return await make_device_code()

@@ -79,10 +79,13 @@ class TestDecide:
         assert decided.overall_score == pytest.approx(0.9)
 
     def test_accepts_exactly_at_threshold(self, engine):
-        assert engine.decide(make_source(0.75, 0.75, 0.75)).decision == DocumentDecision.ACCEPT
+        assert engine.decide(make_source(0.65, 0.65, 0.65)).decision == DocumentDecision.ACCEPT
 
     def test_rejects_below_threshold(self, engine):
-        assert engine.decide(make_source(0.74, 0.74, 0.74)).decision == DocumentDecision.REJECT
+        assert engine.decide(make_source(0.64, 0.64, 0.64)).decision == DocumentDecision.REJECT
+
+    def test_default_threshold_is_065(self, engine):
+        assert engine.acceptance_threshold == 0.65
 
     def test_judge_error_is_always_rejected_with_zero_score(self, engine):
         decided = engine.decide(make_source(1.0, 1.0, 1.0, category="judge_error"))

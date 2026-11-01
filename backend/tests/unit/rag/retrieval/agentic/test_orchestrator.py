@@ -1,3 +1,4 @@
+import itertools
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -64,18 +65,36 @@ def searched_queries(searcher):
     return [c.args[0] for c in searcher.search.await_args_list]
 
 
+def always_insufficient_with_fresh_retries(evaluator):
+    """Кожна оцінка: недостатньо + новий унікальний retry-запит (інакше цикл зупиняється)."""
+    counter = itertools.count(1)
+
+    async def evaluate(query, evidences):
+        return evaluation(sufficient=False, retry_queries=[f"again-{next(counter)}"])
+
+    evaluator.evaluate = AsyncMock(side_effect=evaluate)
+
+
 class TestInit:
 
-    def test_stores_dependencies_and_default_max_iterations(self, planner, evaluator, searcher):
+    def test_stores_dependencies_and_defaults(self, planner, evaluator, searcher):
         o = AgenticOrchestrator(planner, evaluator, searcher)
 
         assert o.planner is planner
         assert o.evaluator is evaluator
         assert o.searcher is searcher
         assert o.max_iterations == 4
+        assert o.original_share == 0.6
+        assert o.anchor_top_n == 3
+        assert o.rrf_k == 60
 
     def test_custom_max_iterations(self, planner, evaluator, searcher):
         assert AgenticOrchestrator(planner, evaluator, searcher, max_iterations=2).max_iterations == 2
+
+    @pytest.mark.parametrize("share", [0.0, 1.0, -0.1, 1.5])
+    def test_rejects_original_share_out_of_range(self, planner, evaluator, searcher, share):
+        with pytest.raises(ValueError, match="original_share"):
+            AgenticOrchestrator(planner, evaluator, searcher, original_share=share)
 
 
 class TestHappyPath:
@@ -97,27 +116,36 @@ class TestHappyPath:
         assert ctx.plan == planner.create.return_value
         assert ctx.plan.subqueries == ["sub1", "sub2"]
 
-    async def test_searches_every_subquery_in_order(self, orchestrator, searcher):
+    async def test_original_query_is_searched_first_then_subqueries(self, orchestrator, searcher):
         await orchestrator.retrieve("q", ["p"])
 
-        assert searched_queries(searcher) == ["sub1", "sub2"]
+        assert searched_queries(searcher) == ["q", "sub1", "sub2"]
 
-    async def test_collects_evidence_tagged_with_originating_subquery(self, orchestrator):
+    async def test_collects_evidence_tagged_with_originating_query(self, orchestrator):
         ctx = await orchestrator.retrieve("q", ["p"])
 
         assert [(e.query, e.chunk_id) for e in ctx.evidence] == [
+            ("q", "q-chunk"),
             ("sub1", "sub1-chunk"),
             ("sub2", "sub2-chunk"),
         ]
 
-    async def test_multiple_results_per_subquery_are_all_collected(self, orchestrator, searcher):
+    async def test_raw_evidence_keeps_every_hit_with_original_score(self, orchestrator, searcher):
         searcher.search = AsyncMock(return_value=[result("a"), result("b"), result("c")])
 
         ctx = await orchestrator.retrieve("q", ["p"])
 
-        assert len(ctx.evidence) == 6 
+        assert len(ctx.raw_evidence) == 9
+        assert all(e.score == 0.8 and e.raw_score is None for e in ctx.raw_evidence)
 
-    async def test_evidence_preserves_text_score_and_metadata(self, orchestrator, searcher):
+    async def test_evidence_is_deduplicated_by_chunk_id(self, orchestrator, searcher):
+        searcher.search = AsyncMock(return_value=[result("a"), result("b"), result("c")])
+
+        ctx = await orchestrator.retrieve("q", ["p"])
+
+        assert [e.chunk_id for e in ctx.evidence] == ["a", "b", "c"]
+
+    async def test_evidence_has_fused_score_and_keeps_raw_score(self, orchestrator, searcher):
         searcher.search = AsyncMock(
             return_value=[VectorSearchResult(id=7, score=0.65, payload={"text": "body", "src": "doc"})]
         )
@@ -125,19 +153,22 @@ class TestHappyPath:
         ctx = await orchestrator.retrieve("q", ["p"])
 
         e = ctx.evidence[0]
-        assert (e.chunk_id, e.score, e.text) == ("7", 0.65, "body")
+        assert (e.chunk_id, e.text, e.raw_score) == ("7", "body", 0.65)
         assert e.metadata == {"text": "body", "src": "doc"}
+        assert e.score == pytest.approx(5 / 61)
 
     async def test_evaluator_called_with_original_query_not_subquery(self, orchestrator, evaluator):
         await orchestrator.retrieve("original question", ["p"])
 
         assert evaluator.evaluate.await_args.args[0] == "original question"
 
-    async def test_sufficient_first_iteration_stops_after_one_round(self, orchestrator, evaluator, searcher):
+    async def test_sufficient_first_iteration_stops_after_one_round(
+        self, orchestrator, evaluator, searcher
+    ):
         ctx = await orchestrator.retrieve("q", ["p"])
 
         evaluator.evaluate.assert_awaited_once()
-        assert searcher.search.await_count == 2
+        assert searcher.search.await_count == 3
         assert ctx.iteration == 1
         assert len(ctx.iterations) == 1
 
@@ -157,9 +188,11 @@ class TestHappyPath:
 
         rec = ctx.iterations[0]
         assert rec.iteration == 1
-        assert rec.subqueries == ["sub1", "sub2"]
-        assert rec.new_evidence_count == 2
-        assert rec.total_evidence_count == 2
+        assert rec.subqueries == ["q", "sub1", "sub2"]
+        assert rec.new_evidence_count == 3
+        assert rec.total_evidence_count == 3
+        assert rec.new_unique_count == 3
+        assert rec.total_unique_count == 3
         assert rec.evaluation is ev
 
     async def test_empty_search_results_yield_empty_evidence(self, orchestrator, searcher):
@@ -168,7 +201,75 @@ class TestHappyPath:
         ctx = await orchestrator.retrieve("q", ["p"])
 
         assert ctx.evidence == []
+        assert ctx.raw_evidence == []
         assert ctx.iterations[0].new_evidence_count == 0
+        assert ctx.iterations[0].new_unique_count == 0
+
+
+class TestQueryDeduplication:
+
+    async def test_subquery_equal_to_original_is_not_searched_twice(
+        self, orchestrator, planner, searcher
+    ):
+        planner.create.return_value = SearchPlan(subqueries=["  Q ", "sub1"])
+
+        await orchestrator.retrieve("q", ["p"])
+
+        assert searched_queries(searcher) == ["q", "sub1"]
+
+    async def test_repeated_subqueries_are_searched_once_ignoring_case_and_spaces(
+        self, orchestrator, planner, searcher
+    ):
+        planner.create.return_value = SearchPlan(subqueries=["sub1", "SUB1", "sub1  "])
+
+        await orchestrator.retrieve("q", ["p"])
+
+        assert searched_queries(searcher) == ["q", "sub1"]
+
+    def test_fresh_queries_drops_already_searched(self):
+        assert AgenticOrchestrator._fresh_queries(["a", "b"], {"a"}) == ["b"]
+
+    def test_fresh_queries_drops_blank_and_duplicates(self):
+        assert AgenticOrchestrator._fresh_queries(["x", " ", "", "X", "y"], set()) == ["x", "y"]
+
+    def test_fresh_queries_preserves_original_spelling(self):
+        assert AgenticOrchestrator._fresh_queries(["Hello  World"], set()) == ["Hello  World"]
+
+
+class TestFusion:
+
+    async def test_original_top_chunks_are_anchored_ahead_of_consensus(self, planner, evaluator):
+        async def search(query):
+            if query == "q":
+                return [result(i) for i in ("a", "b", "c", "d")]
+            return [result("x")]
+
+        searcher = MagicMock()
+        searcher.search = AsyncMock(side_effect=search)
+        o = AgenticOrchestrator(planner, evaluator, searcher, original_share=0.3, anchor_top_n=3)
+
+        ctx = await o.retrieve("q", ["p"])
+
+        assert [e.chunk_id for e in ctx.evidence] == ["a", "b", "c", "x", "d"]
+
+    async def test_chunk_found_by_several_queries_outranks_single_hit(self, planner, evaluator):
+        async def search(query):
+            if query == "q":
+                return [result("a")]
+            if query == "sub1":
+                return [result("b"), result("c")]
+            return [result("c")]
+
+        searcher = MagicMock()
+        searcher.search = AsyncMock(side_effect=search)
+        o = AgenticOrchestrator(planner, evaluator, searcher, anchor_top_n=1)
+
+        ctx = await o.retrieve("q", ["p"])
+
+        assert [e.chunk_id for e in ctx.evidence] == ["a", "c", "b"]
+
+    def test_fuse_of_nothing_is_empty(self, orchestrator):
+        assert orchestrator._fuse([]) == []
 
 
 class TestRetryLoop:
@@ -181,7 +282,7 @@ class TestRetryLoop:
 
         await orchestrator.retrieve("q", ["p"])
 
-        assert searched_queries(searcher) == ["sub1", "sub2", "retry1"]
+        assert searched_queries(searcher) == ["q", "sub1", "sub2", "retry1"]
 
     async def test_iteration_counter_increments(self, orchestrator, evaluator):
         evaluator.evaluate.side_effect = [
@@ -203,7 +304,7 @@ class TestRetryLoop:
 
         ctx = await orchestrator.retrieve("q", ["p"])
 
-        assert [e.query for e in ctx.evidence] == ["sub1", "sub2", "retry1"]
+        assert [e.query for e in ctx.evidence] == ["q", "sub1", "sub2", "retry1"]
 
     async def test_iteration_records_track_new_and_total_counts(self, orchestrator, evaluator):
         evaluator.evaluate.side_effect = [
@@ -214,9 +315,24 @@ class TestRetryLoop:
         ctx = await orchestrator.retrieve("q", ["p"])
 
         first, second = ctx.iterations
-        assert (first.new_evidence_count, first.total_evidence_count) == (2, 2)
-        assert (second.new_evidence_count, second.total_evidence_count) == (3, 5)
+        assert (first.new_evidence_count, first.total_evidence_count) == (3, 3)
+        assert (first.new_unique_count, first.total_unique_count) == (3, 3)
+        assert (second.new_evidence_count, second.total_evidence_count) == (3, 6)
+        assert (second.new_unique_count, second.total_unique_count) == (3, 6)
         assert second.subqueries == ["r1", "r2", "r3"]
+
+    async def test_already_searched_retry_queries_are_dropped_from_the_round(
+        self, orchestrator, evaluator, searcher
+    ):
+        evaluator.evaluate.side_effect = [
+            evaluation(sufficient=False, retry_queries=["sub1", "new"]),
+            evaluation(sufficient=True),
+        ]
+
+        ctx = await orchestrator.retrieve("q", ["p"])
+
+        assert searched_queries(searcher) == ["q", "sub1", "sub2", "new"]
+        assert ctx.iterations[1].subqueries == ["new"]
 
     async def test_evaluator_receives_cumulative_evidence_each_round(self, orchestrator, evaluator):
         seen_sizes = []
@@ -229,7 +345,7 @@ class TestRetryLoop:
 
         await orchestrator.retrieve("q", ["p"])
 
-        assert seen_sizes == [2, 3]
+        assert seen_sizes == [3, 4]
 
     async def test_each_iteration_record_keeps_its_own_evaluation(self, orchestrator, evaluator):
         first = evaluation(sufficient=False, retry_queries=["r"])
@@ -245,18 +361,43 @@ class TestRetryLoop:
 
 class TestStopConditions:
 
-    async def test_stops_when_no_retry_queries_even_if_insufficient(self, orchestrator, evaluator, searcher):
+    async def test_stops_when_no_retry_queries_even_if_insufficient(
+        self, orchestrator, evaluator, searcher
+    ):
         evaluator.evaluate.return_value = evaluation(sufficient=False, retry_queries=[])
 
         ctx = await orchestrator.retrieve("q", ["p"])
 
         evaluator.evaluate.assert_awaited_once()
-        assert searcher.search.await_count == 2
+        assert searcher.search.await_count == 3
         assert ctx.evaluation.sufficient is False
+
+    async def test_stops_when_all_retry_queries_were_already_searched(
+        self, orchestrator, evaluator, searcher
+    ):
+        evaluator.evaluate.return_value = evaluation(sufficient=False, retry_queries=["sub1", "Q"])
+
+        ctx = await orchestrator.retrieve("q", ["p"])
+
+        evaluator.evaluate.assert_awaited_once()
+        assert searcher.search.await_count == 3
+        assert ctx.iteration == 1
+
+    async def test_stops_when_retry_round_finds_no_new_unique_chunks(
+        self, orchestrator, evaluator, searcher
+    ):
+        searcher.search = AsyncMock(return_value=[result("same")])
+        always_insufficient_with_fresh_retries(evaluator)
+
+        ctx = await orchestrator.retrieve("q", ["p"])
+
+        assert evaluator.evaluate.await_count == 2
+        assert ctx.iteration == 2
+        assert ctx.iterations[1].new_unique_count == 0
 
     async def test_stops_at_max_iterations(self, planner, evaluator, searcher):
         o = AgenticOrchestrator(planner, evaluator, searcher, max_iterations=3)
-        evaluator.evaluate.return_value = evaluation(sufficient=False, retry_queries=["again"])
+        always_insufficient_with_fresh_retries(evaluator)
 
         ctx = await o.retrieve("q", ["p"])
 
@@ -265,7 +406,7 @@ class TestStopConditions:
         assert len(ctx.iterations) == 3
 
     async def test_default_max_iterations_is_four(self, orchestrator, evaluator):
-        evaluator.evaluate.return_value = evaluation(sufficient=False, retry_queries=["again"])
+        always_insufficient_with_fresh_retries(evaluator)
 
         ctx = await orchestrator.retrieve("q", ["p"])
 
@@ -279,7 +420,7 @@ class TestStopConditions:
         ctx = await o.retrieve("q", ["p"])
 
         evaluator.evaluate.assert_awaited_once()
-        assert searched_queries(searcher) == ["sub1", "sub2"]
+        assert searched_queries(searcher) == ["q", "sub1", "sub2"]
         assert ctx.iteration == 1
 
     async def test_sufficient_wins_over_retry_queries(self, orchestrator, evaluator):
@@ -293,15 +434,17 @@ class TestStopConditions:
 
 class TestEmptyPlan:
 
-    async def test_empty_plan_skips_search_but_still_evaluates(self, orchestrator, planner, evaluator, searcher):
+    async def test_empty_plan_still_searches_original_query_and_evaluates(
+        self, orchestrator, planner, evaluator, searcher
+    ):
         planner.create.return_value = SearchPlan(subqueries=[])
         evaluator.evaluate.return_value = evaluation(sufficient=False)
 
         ctx = await orchestrator.retrieve("q", ["p"])
 
-        searcher.search.assert_not_called()
-        assert evaluator.evaluate.await_args.args[1] == []
-        assert ctx.evidence == []
+        assert searched_queries(searcher) == ["q"]
+        assert [e.chunk_id for e in evaluator.evaluate.await_args.args[1]] == ["q-chunk"]
+        assert [e.chunk_id for e in ctx.evidence] == ["q-chunk"]
 
 
 class TestPlannerRateLimitFallback:
@@ -333,16 +476,20 @@ class TestPlannerRateLimitFallback:
         ctx = await orchestrator.retrieve("original", ["p"])
 
         assert [(e.query, e.chunk_id) for e in ctx.evidence] == [("original", "original-chunk")]
+        assert len(ctx.raw_evidence) == 1
 
 
 class TestEvaluatorRateLimitFallback:
 
-    async def test_first_iteration_keeps_evidence_and_adds_fallback(self, orchestrator, evaluator):
+    async def test_first_iteration_keeps_evidence_without_searching_original_again(
+        self, orchestrator, evaluator, searcher
+    ):
         evaluator.evaluate.side_effect = LLMRateLimitError("limit")
 
         ctx = await orchestrator.retrieve("original", ["p"])
 
-        assert [e.query for e in ctx.evidence] == ["sub1", "sub2", "original"]
+        assert searched_queries(searcher) == ["original", "sub1", "sub2"]
+        assert [e.query for e in ctx.evidence] == ["original", "sub1", "sub2"]
 
     async def test_fallback_context_shape(self, orchestrator, evaluator):
         evaluator.evaluate.side_effect = LLMRateLimitError("limit")
@@ -362,7 +509,7 @@ class TestEvaluatorRateLimitFallback:
 
         ctx = await orchestrator.retrieve("original", ["p"])
 
-        assert [e.query for e in ctx.evidence] == ["sub1", "sub2", "retry1", "original"]
+        assert [e.query for e in ctx.evidence] == ["original", "sub1", "sub2", "retry1"]
         assert ctx.iterations == []
         assert ctx.evaluation is None
 
@@ -405,34 +552,91 @@ class TestErrorPropagation:
 class TestSearchSubqueries:
 
     async def test_empty_subqueries_returns_empty_list(self, orchestrator, searcher):
-        assert await orchestrator._search_subqueries([]) == []
+        rankings, searched = [], set()
+
+        assert await orchestrator._search_subqueries([], "q", rankings, searched) == []
+
         searcher.search.assert_not_called()
+        assert rankings == []
+        assert searched == set()
 
     async def test_searches_sequentially_in_given_order(self, orchestrator, searcher):
-        evidence = await orchestrator._search_subqueries(["x", "y", "z"])
+        rankings, searched = [], set()
+
+        evidence = await orchestrator._search_subqueries(["x", "y", "z"], "x", rankings, searched)
 
         assert searched_queries(searcher) == ["x", "y", "z"]
         assert [e.query for e in evidence] == ["x", "y", "z"]
 
+    async def test_records_rankings_and_marks_original_query(self, orchestrator):
+        rankings, searched = [], set()
+
+        await orchestrator._search_subqueries(["Hello  World", "y"], "hello world", rankings, searched)
+
+        assert [is_original for is_original, _ in rankings] == [True, False]
+        assert [[e.chunk_id for e in hits] for _, hits in rankings] == [
+            ["Hello  World-chunk"],
+            ["y-chunk"],
+        ]
+
+    async def test_marks_queries_as_searched_in_normalised_form(self, orchestrator):
+        rankings, searched = [], set()
+
+        await orchestrator._search_subqueries(["Hello  WORLD"], "q", rankings, searched)
+
+        assert searched == {"hello world"}
+
 
 class TestFallbackToHybrid:
 
-    async def test_without_existing_evidence(self, orchestrator, searcher):
+    async def test_without_existing_state(self, orchestrator, searcher):
         ctx = await orchestrator._fallback_to_hybrid("q")
 
         assert [e.query for e in ctx.evidence] == ["q"]
         assert ctx.original_query == "q"
+        assert ctx.plan.subqueries == ["q"]
+        assert ctx.evaluation is None
+        assert ctx.iterations == []
 
-    async def test_existing_evidence_comes_first(self, orchestrator):
-        existing = await orchestrator._search_subqueries(["old"])
+    async def test_original_query_hits_are_anchored_before_existing_rankings(self, orchestrator):
+        rankings, searched = [], set()
+        await orchestrator._search_subqueries(["old"], "q", rankings, searched)
 
-        ctx = await orchestrator._fallback_to_hybrid("q", existing_evidence=existing)
+        ctx = await orchestrator._fallback_to_hybrid("q", rankings=rankings, searched=searched)
 
-        assert [e.query for e in ctx.evidence] == ["old", "q"]
+        assert [e.query for e in ctx.evidence] == ["q", "old"]
 
-    async def test_does_not_mutate_existing_evidence_list(self, orchestrator):
-        existing = await orchestrator._search_subqueries(["old"])
+    async def test_does_not_search_again_if_original_already_searched(self, orchestrator, searcher):
+        rankings, searched = [], set()
+        raw = await orchestrator._search_subqueries(["q"], "q", rankings, searched)
+        searcher.search.reset_mock()
 
-        await orchestrator._fallback_to_hybrid("q", existing_evidence=existing)
+        ctx = await orchestrator._fallback_to_hybrid(
+            "q", rankings=rankings, searched=searched, raw_evidence=raw
+        )
 
-        assert len(existing) == 1
+        searcher.search.assert_not_called()
+        assert [e.chunk_id for e in ctx.evidence] == ["q-chunk"]
+        assert len(ctx.raw_evidence) == 1
+
+    async def test_raw_evidence_includes_existing_and_new_hits(self, orchestrator):
+        rankings, searched = [], set()
+        raw = await orchestrator._search_subqueries(["old"], "q", rankings, searched)
+
+        ctx = await orchestrator._fallback_to_hybrid(
+            "q", rankings=rankings, searched=searched, raw_evidence=raw
+        )
+
+        assert [e.query for e in ctx.raw_evidence] == ["old", "q"]
+
+    async def test_does_not_mutate_inputs(self, orchestrator):
+        rankings, searched = [], set()
+        raw = await orchestrator._search_subqueries(["old"], "q", rankings, searched)
+
+        await orchestrator._fallback_to_hybrid(
+            "q", rankings=rankings, searched=searched, raw_evidence=raw
+        )
+
+        assert len(rankings) == 1
+        assert searched == {"old"}
+        assert len(raw) == 1
