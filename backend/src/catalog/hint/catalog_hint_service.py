@@ -1,6 +1,9 @@
 import logging
 from collections import Counter
 
+from src.catalog.draft.generator import SkillDraftGenerator
+from src.catalog.draft.models import DraftSpec, Snippet
+from src.catalog.draft.sources import collect_snippets
 from src.catalog.hint.candidate_collector import CandidateCollector
 from src.catalog.hint.exceptions import HintClientError, HintParseError, HintValidationError
 from src.catalog.hint.models import CatalogCandidate, HintProposal, HintSelection
@@ -14,9 +17,12 @@ from src.catalog.hint.prompts import (
 from src.rag.retrieval.agentic.exceptions import LLMClientError, LLMParseError, LLMRateLimitError
 from src.rag.retrieval.agentic.llm_client import LLMClient
 from src.repositories.agent_profile_repo import AgentProfileRepository
+from src.repositories.document_repo import DocumentRepository
 from src.repositories.knowledge_pack_repo import KnowledgePackRepository
 from src.repositories.skill_repo import SkillRepository
 from src.repositories.tool_repo import ToolDefinitionRepository
+from src.schemas.skill_drafts import SkillDraftResult
+from src.services.knowledge_service import KnowledgeService
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +40,9 @@ class CatalogHintService:
         tool_repo: ToolDefinitionRepository,
         pack_repo: KnowledgePackRepository,
         agent_repo: AgentProfileRepository,
+        knowledge_service: KnowledgeService | None = None,
+        draft_generator: SkillDraftGenerator | None = None,
+        document_repo: DocumentRepository | None = None,
         max_retries: int = 1,
     ):
         self.llm_client = llm_client
@@ -42,6 +51,9 @@ class CatalogHintService:
         self.tool_repo = tool_repo
         self.pack_repo = pack_repo
         self.agent_repo = agent_repo
+        self.knowledge_service = knowledge_service
+        self.draft_generator = draft_generator
+        self.document_repo = document_repo
         self.max_retries = max_retries
 
     async def propose(self, viewer_id: int, intent: str) -> HintProposal:
@@ -55,9 +67,19 @@ class CatalogHintService:
         if not candidates:
             return HintProposal(reasoning="Catalog is currently empty.")
 
-        prompt = self._build_prompt(intent, candidates)
+        clean_intent = intent.strip()
+        prompt = self._build_prompt(clean_intent, candidates)
         selection = await self._ask_with_retry(prompt, candidates)
-        return await self._expand(viewer_id, selection)
+        proposal, packs = await self._expand_with_packs(viewer_id, selection)
+
+        if packs and self.knowledge_service is not None:
+            proposal.generated_skill = await self._generate_grounded_skill(
+                intent=clean_intent,
+                selection=selection,
+                packs=packs,
+            )
+
+        return proposal
 
     def _log_candidates(self, viewer_id: int, candidates: list[CatalogCandidate]) -> None:
         counts = Counter(c.kind.value for c in candidates)
@@ -122,6 +144,12 @@ class CatalogHintService:
         )
 
     async def _expand(self, viewer_id: int, selection: HintSelection) -> HintProposal:
+        proposal, _ = await self._expand_with_packs(viewer_id, selection)
+        return proposal
+
+    async def _expand_with_packs(
+        self, viewer_id: int, selection: HintSelection
+    ) -> tuple[HintProposal, list]:
         profile = None
         inherited_skill_ids: set[int] = set()
         inherited_tool_ids: set[int] = set()
@@ -134,6 +162,20 @@ class CatalogHintService:
                     "name": agent.agent_name,
                     "description": agent.description,
                 }
+                base_skills = [
+                    {"id": s.id, "name": s.skill_name}
+                    for s in agent.skills
+                    if getattr(s, "skill_name", None)
+                ]
+                base_tools = [
+                    {"id": t.id, "name": t.tool_name}
+                    for t in agent.tools
+                    if getattr(t, "tool_name", None)
+                ]
+                if base_skills:
+                    profile["base_skills"] = base_skills
+                if base_tools:
+                    profile["base_tools"] = base_tools
                 inherited_skill_ids = {s.id for s in agent.skills}
                 inherited_tool_ids = {t.id for t in agent.tools}
 
@@ -150,7 +192,7 @@ class CatalogHintService:
         pack_ids = [_entity_id(k) for k in selection.knowledge_pack_keys]
         packs = _in_order(await self.pack_repo.get_active_many(pack_ids), pack_ids)
 
-        return HintProposal(
+        proposal = HintProposal(
             agent_profile=profile,
             skills=[{"id": s.id, "name": s.skill_name, "description": s.description} for s in skills],
             tools=[{"id": t.id, "name": t.tool_name, "description": t.description} for t in tools],
@@ -158,6 +200,46 @@ class CatalogHintService:
             gaps=selection.gaps,
             reasoning=selection.reasoning,
         )
+        return proposal, packs
+
+    async def _generate_grounded_skill(
+        self,
+        intent: str,
+        selection: HintSelection,
+        packs: list,
+    ) -> SkillDraftResult | None:
+        queries = list(
+            dict.fromkeys(
+                q.strip()
+                for q in [intent, *selection.search_queries]
+                if isinstance(q, str) and q.strip()
+            )
+        )
+        snippets_raw, warnings = await collect_snippets(
+            self.knowledge_service,
+            queries,
+            packs,
+            document_repo=self.document_repo,
+        )
+        if not snippets_raw:
+            return None
+
+        snippets = tuple(Snippet.from_dict(s) for s in snippets_raw)
+        generator = self.draft_generator or SkillDraftGenerator(
+            llm_client=self.llm_client,
+            max_retries=self.max_retries,
+        )
+        try:
+            return await generator.generate(
+                DraftSpec(
+                    intent=intent,
+                    snippets=snippets,
+                    warnings=tuple(warnings),
+                )
+            )
+        except Exception as exc:
+            logger.warning("Hint skill generation failed: %s", exc)
+            return None
 
 
 def _entity_id(key: str) -> int:

@@ -13,6 +13,8 @@ MAX_SKILLS = 10
 MAX_TOOLS = 5
 MAX_PACKS = 5
 MAX_GAPS = 3
+MAX_SEARCH_QUERIES = 3
+MAX_QUERY_CHARS = 120
 
 _GAP_TO_CANDIDATE = {
     GapKind.SKILL: CandidateKind.SKILL,
@@ -27,6 +29,7 @@ def parse(raw: dict, candidates: list[CatalogCandidate]) -> HintSelection:
 
     data = dict(raw)
     data["gaps"] = _clean_gaps(raw.get("gaps"))
+    data["search_queries"] = _clean_queries(raw.get("search_queries"))
 
     try:
         selection = HintSelection.model_validate(data)
@@ -75,6 +78,21 @@ def _check(
 
 def _dedupe(keys: list[str]) -> list[str]:
     return list(dict.fromkeys(keys))
+
+
+def _clean_queries(value) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    queries: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        normalized = " ".join(item.split())[:MAX_QUERY_CHARS]
+        if normalized and normalized not in queries:
+            queries.append(normalized)
+        if len(queries) == MAX_SEARCH_QUERIES:
+            break
+    return queries
 
 
 def _clean_gaps(value) -> list[dict]:

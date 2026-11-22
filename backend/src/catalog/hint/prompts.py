@@ -17,6 +17,10 @@ empty list is a correct, honest answer, not a failure.
   over coverage — do not add a skill "just in case".
 - tool_keys: tools (MCP servers) the user's request implies they need.
 - knowledge_pack_keys: knowledge packs relevant to the user's domain.
+- search_queries: when knowledge_pack_keys is non-empty, provide 1 to 3 short
+  search queries in English (3-8 keywords each) to retrieve relevant material
+  from those knowledge packs for drafting a grounded skill (even if the user's
+  request is in another language). Leave empty if knowledge_pack_keys is empty.
 
 # gaps
 If the user clearly needs something that NO candidate covers, report it in
@@ -41,6 +45,7 @@ Return ONE JSON object and nothing else (no markdown, no comments):
   "skill_keys": ["<key>", ...],
   "tool_keys": ["<key>", ...],
   "knowledge_pack_keys": ["<key>", ...],
+  "search_queries": ["<english search query>", ...],
   "gaps": [{"kind": "skill|tool|pack", "name": "...", "description": "...", "reason": "..."}],
   "reasoning": "<one sentence>"
 }

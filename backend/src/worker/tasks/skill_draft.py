@@ -3,15 +3,7 @@ from src.worker.tracked import run_tracked_job
 
 
 def _snippet(s: dict) -> Snippet:
-    return Snippet(
-        ref=s["ref"],
-        text=s["text"],
-        score=s.get("score", 0.0),
-        pack_id=s.get("pack_id"),
-        pack_slug=s.get("pack_slug", ""),
-        pack_name=s.get("pack_name", ""),
-        domain_id=s.get("domain_id"),
-    )
+    return Snippet.from_dict(s)
 
 
 async def run_skill_draft(

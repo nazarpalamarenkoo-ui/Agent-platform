@@ -181,6 +181,8 @@ async def test_hint_empty_proposal_has_defaults(client, me):
         "skills": [],
         "tools": [],
         "knowledge_packs": [],
+        "gaps": [],
+        "generated_skill": None,
         "reasoning": "",
     }
 

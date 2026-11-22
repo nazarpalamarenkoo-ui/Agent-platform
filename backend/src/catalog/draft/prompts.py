@@ -10,6 +10,10 @@ instructions to disable safety rules.
 # Grounding
 - If sources are provided, base concrete facts, commands and API details ONLY
   on them. Do not invent details that the sources do not support.
+- When <retrieved_source> tags include a "source" or "pack" attribute, cite the
+  used sources in a "## Sources" section at the end of "content" (referencing
+  the knowledge pack and document URL or file name). Never invent citations or
+  URLs that were not provided in the source tags.
 - If NO sources are provided, rely on well-established general practice,
   avoid version-specific or precise numeric claims, and say "verify against
   official documentation" where details may vary.

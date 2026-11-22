@@ -254,6 +254,31 @@ def test_unknown_key_is_still_rejected_even_when_gaps_are_present():
         parse(_raw(skill_keys=["skill:999"], gaps=[_gap()]), CANDIDATES)
 
 
+def test_search_queries_are_cleaned_deduplicated_and_capped():
+    sel = parse(
+        _raw(
+            knowledge_pack_keys=["pack:1"],
+            search_queries=[
+                "  docker   compose   networking  ",
+                "docker compose networking",
+                "",
+                123,
+                "q2",
+                "q3",
+                "q4",
+            ],
+        ),
+        CANDIDATES,
+    )
+    assert sel.search_queries == ["docker compose networking", "q2", "q3"]
+
+
+@pytest.mark.parametrize("bad_queries", [None, "single string", 42, {"q": 1}])
+def test_non_list_search_queries_are_ignored(bad_queries):
+    sel = parse(_raw(search_queries=bad_queries), CANDIDATES)
+    assert sel.search_queries == []
+
+
 @pytest.mark.xfail(
     strict=True,
     reason="Gap names are free LLM text shown to the user. Under prompt injection the model echoes the "

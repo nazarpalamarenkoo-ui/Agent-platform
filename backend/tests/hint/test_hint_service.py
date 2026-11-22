@@ -329,3 +329,110 @@ def test_honest_empty_answer_gives_an_empty_proposal():
     p = run(service.propose(1, "borscht"))
     assert p.agent_profile is None
     assert p.skills == p.tools == p.knowledge_packs == p.gaps == []
+    assert p.generated_skill is None
+
+
+class FakeKnowledgeService:
+    def __init__(self, hits):
+        self.hits = hits
+        self.calls: list[dict] = []
+
+    async def search_by_slugs(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.hits
+
+
+class FakeDocumentRepo:
+    def __init__(self, docs):
+        self.docs = {d.id: d for d in docs}
+
+    async def get_by_ids(self, ids):
+        return [self.docs[i] for i in ids if i in self.docs]
+
+
+def test_propose_searches_selected_packs_and_generates_grounded_skill_with_sources():
+    draft_json = {
+        "skill_name": "Docker Compose Guide",
+        "description": "Configure and run multi-container Docker applications.",
+        "content": "## When to use\nUse for compose stacks.\n\n## Sources\n- Docker Documentation (https://docs.docker.com/compose/)",
+    }
+    llm = ScriptedLLM(
+        _selection(
+            profile_key="profile:1",
+            knowledge_pack_keys=["pack:1"],
+            search_queries=["docker compose service healthcheck"],
+        ),
+        draft_json,
+    )
+    knowledge = FakeKnowledgeService(
+        [
+            Row(
+                id="chunk-1",
+                score=0.92,
+                payload={
+                    "knowledge_pack": "docker-docs",
+                    "chunk_index": 0,
+                    "document_id": 10,
+                    "text": "Use healthcheck in compose.yaml to wait for dependencies.",
+                    "source_type": "manual",
+                },
+            )
+        ]
+    )
+    doc_repo = FakeDocumentRepo(
+        [Row(id=10, source="https://docs.docker.com/compose/", document_type="manual")]
+    )
+    service, _, repos = _service(llm)
+    repos["pack_repo"].rows[1] = Row(
+        id=1,
+        slug="docker-docs",
+        name="Docker Documentation",
+        description="Official Docker docs",
+        domain_id=5,
+    )
+    service.knowledge_service = knowledge
+    service.document_repo = doc_repo
+
+    proposal = run(service.propose(1, "configure docker compose healthcheck"))
+
+    assert len(knowledge.calls) == 2
+    assert {c["query"] for c in knowledge.calls} == {
+        "configure docker compose healthcheck",
+        "docker compose service healthcheck",
+    }
+    assert proposal.generated_skill is not None
+    assert proposal.generated_skill.skill_name == "Docker Compose Guide"
+    assert proposal.generated_skill.grounded is True
+    assert proposal.generated_skill.sources == [
+        "Docker Documentation: https://docs.docker.com/compose/"
+    ]
+    assert len(proposal.generated_skill.used_packs) == 1
+    assert proposal.generated_skill.used_packs[0].slug == "docker-docs"
+    assert proposal.generated_skill.used_packs[0].chunks == 1
+
+
+def test_propose_returns_no_generated_skill_when_rag_finds_no_relevant_chunks():
+    llm = ScriptedLLM(
+        _selection(
+            knowledge_pack_keys=["pack:1"],
+            search_queries=["unrelated query"],
+        )
+    )
+    knowledge = FakeKnowledgeService([])
+    service, _, repos = _service(llm)
+    repos["pack_repo"].rows[1] = Row(
+        id=1,
+        slug="docker-docs",
+        name="Docker Documentation",
+        description="Official Docker docs",
+        domain_id=5,
+    )
+    service.knowledge_service = knowledge
+
+    proposal = run(service.propose(1, "something not in pack"))
+
+    assert len(llm.calls) == 1
+    assert proposal.knowledge_packs == [
+        {"id": 1, "name": "Docker Documentation", "description": "Official Docker docs"}
+    ]
+    assert proposal.generated_skill is None

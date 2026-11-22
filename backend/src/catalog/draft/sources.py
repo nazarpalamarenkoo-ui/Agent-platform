@@ -3,6 +3,7 @@ import logging
 import re
 
 from src.config import settings
+from src.repositories.document_repo import format_document_source
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +32,7 @@ _TAGS = re.compile(r"<\s*/?\s*(?:retrieved_source|user_source)\b[^>]*>", re.I)
 
 
 async def collect_snippets(
-    knowledge_service, queries: list[str], packs: list
+    knowledge_service, queries: list[str], packs: list, document_repo=None
 ) -> tuple[list[dict], list[str]]:
     by_slug = {p.slug: p for p in packs}
     slugs = list(by_slug)
@@ -73,15 +74,25 @@ async def collect_snippets(
         score = float(result.score or 0.0)
         current = best.get(ref)
         if current is None or score > current["score"]:
-            best[ref] = {
+            entry = {
                 "ref": ref,
                 "text": text[:MAX_SNIPPET_CHARS],
                 "score": score,
                 "pack_id": pack.id,
                 "pack_slug": pack.slug,
                 "pack_name": pack.name,
-                "domain_id": pack.domain_id,
+                "domain_id": getattr(pack, "domain_id", None),
             }
+            doc_id = _coerce_int(payload.get("document_id"))
+            if doc_id is not None:
+                entry["document_id"] = doc_id
+            payload_source = format_document_source(payload.get("source"))
+            if payload_source:
+                entry["source"] = payload_source
+            payload_type = payload.get("source_type") or payload.get("document_type")
+            if isinstance(payload_type, str) and payload_type.strip():
+                entry["document_type"] = payload_type.strip()
+            best[ref] = entry
 
     ranked = sorted(best.values(), key=lambda s: s["score"], reverse=True)
     logger.info(
@@ -93,12 +104,63 @@ async def collect_snippets(
     )
     strong = [s for s in ranked if s["score"] >= MIN_SCORE][:MAX_SNIPPETS]
 
+    doc_repo = (
+        document_repo
+        if document_repo is not None
+        else (
+            knowledge_service.__dict__.get("document_repo")
+            if hasattr(knowledge_service, "__dict__")
+            else None
+        )
+    )
+    if doc_repo is not None and strong:
+        await _enrich_document_sources(strong, doc_repo)
+
     warnings: list[str] = []
     if failed:
         warnings.append(WARN_PARTIAL)
     if not strong:
         warnings.append(WARN_NOTHING)
     return strong, warnings
+
+
+async def _enrich_document_sources(snippets: list[dict], doc_repo) -> None:
+    doc_ids = [
+        s["document_id"]
+        for s in snippets
+        if isinstance(s.get("document_id"), int)
+    ]
+    if not doc_ids:
+        return
+    try:
+        docs = await doc_repo.get_by_ids(doc_ids)
+    except Exception:
+        logger.warning("Failed to resolve document sources for %s", doc_ids, exc_info=True)
+        return
+
+    by_id = {d.id: d for d in (docs or []) if getattr(d, "id", None) is not None}
+    for s in snippets:
+        doc = by_id.get(s.get("document_id"))
+        if doc is None:
+            continue
+        clean_source = format_document_source(getattr(doc, "source", None))
+        if clean_source:
+            s["source"] = clean_source
+        raw_type = getattr(doc, "document_type", None)
+        if raw_type is not None:
+            type_val = getattr(raw_type, "value", str(raw_type))
+            if type_val:
+                s["document_type"] = str(type_val)
+
+
+def _coerce_int(value) -> int | None:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    return None
 
 
 def _payload_text(payload) -> str:

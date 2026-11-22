@@ -190,3 +190,53 @@ def test_search_timeout_counts_as_failure(monkeypatch):
             await asyncio.sleep(1)
 
     assert run(Slow(), ["q"]) == ([], [WARN_UNAVAILABLE])
+
+
+class FakeDocRepo:
+    def __init__(self, docs):
+        self.docs = list(docs)
+        self.calls: list[list[int]] = []
+
+    async def get_by_ids(self, ids):
+        self.calls.append(list(ids))
+        return [d for d in self.docs if d.id in set(ids)]
+
+
+def test_resolves_document_sources_and_sanitizes_local_paths():
+    k = FakeKnowledge(
+        {
+            "q": [
+                _hit("docker", 1, HIGH, "web chunk", document_id=101),
+                _hit("k8s", 2, HIGH, "local file chunk", document_id=102),
+            ]
+        }
+    )
+    doc_repo = FakeDocRepo(
+        [
+            NS(id=101, source="https://docs.docker.com/compose/install/", document_type=NS(value="manual")),
+            NS(id=102, source="/app/data/books/k8s-architecture.pdf", document_type="book"),
+        ]
+    )
+
+    snippets, warnings = asyncio.run(collect_snippets(k, ["q"], PACKS, document_repo=doc_repo))
+
+    assert warnings == []
+    assert len(doc_repo.calls) == 1
+    assert set(doc_repo.calls[0]) == {101, 102}
+    by_ref = {s["ref"]: s for s in snippets}
+    assert by_ref["docker#1"]["source"] == "https://docs.docker.com/compose/install/"
+    assert by_ref["docker#1"]["document_type"] == "manual"
+    assert by_ref["k8s#2"]["source"] == "k8s-architecture.pdf"
+    assert by_ref["k8s#2"]["document_type"] == "book"
+
+
+def test_uses_knowledge_service_document_repo_when_not_explicitly_passed():
+    k = FakeKnowledge({"q": [_hit("docker", 1, HIGH, "chunk", document_id=55)]})
+    k.document_repo = FakeDocRepo(
+        [NS(id=55, source=r"C:\server\uploads\guide.md", document_type="manual")]
+    )
+
+    snippets, _ = run(k, ["q"])
+
+    assert snippets[0]["source"] == "guide.md"
+    assert snippets[0]["document_id"] == 55

@@ -157,3 +157,56 @@ def test_unexpected_llm_errors_are_not_swallowed():
 def test_frontmatter_emitted_by_llm_never_reaches_the_result():
     bad = {**GOOD, "content": '---\nname: "x"\n---\n## Body'}
     assert gen(ScriptedLLM(bad), DraftSpec("x")).content == "## Body"
+
+
+def test_resolved_document_source_is_included_in_prompt_and_deduplicated_in_result():
+    s1 = Snippet(
+        ref="docker#1",
+        text="compose v2 syntax",
+        score=0.95,
+        pack_id=1,
+        pack_slug="docker",
+        pack_name="Docker Documentation",
+        domain_id=10,
+        document_id=101,
+        source="https://docs.docker.com/compose/",
+        document_type="manual",
+    )
+    s2 = Snippet(
+        ref="docker#2",
+        text="compose profiles",
+        score=0.90,
+        pack_id=1,
+        pack_slug="docker",
+        pack_name="Docker Documentation",
+        domain_id=10,
+        document_id=101,
+        source="https://docs.docker.com/compose/",
+        document_type="manual",
+    )
+    s3 = Snippet(
+        ref="k8s#1",
+        text="deployment spec",
+        score=0.88,
+        pack_id=2,
+        pack_slug="k8s",
+        pack_name="Kubernetes Documentation",
+        domain_id=11,
+        document_id=202,
+        source="k8s-handbook.pdf",
+        document_type="book",
+    )
+    spec = DraftSpec("compose and k8s", snippets=(s1, s2, s3))
+    prompt = build(spec)
+    assert (
+        '<retrieved_source id="docker#1" pack="Docker Documentation" '
+        'source="https://docs.docker.com/compose/" type="manual">'
+    ) in prompt
+
+    result = gen(ScriptedLLM(GOOD), spec)
+    assert result.grounded is True
+    assert result.sources == [
+        "Docker Documentation: https://docs.docker.com/compose/",
+        "Kubernetes Documentation: k8s-handbook.pdf",
+    ]
+    assert [(p.slug, p.chunks) for p in result.used_packs] == [("docker", 2), ("k8s", 1)]

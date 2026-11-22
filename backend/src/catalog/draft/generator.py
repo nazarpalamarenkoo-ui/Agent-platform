@@ -1,6 +1,6 @@
 import logging
 
-from src.catalog.draft.models import DraftSpec
+from src.catalog.draft.models import DraftSpec, Snippet
 from src.catalog.draft.parser import DraftParseError, parse_draft
 from src.catalog.draft.prompts import DRAFT_SYSTEM_PROMPT, DRAFT_USER_TEMPLATE
 from src.catalog.draft.sources import MAX_SNIPPET_CHARS, defang
@@ -15,6 +15,27 @@ UNVERIFIED = (
     "Draft is based on general model knowledge and was not verified against "
     "any source. Review it before saving."
 )
+
+
+def _format_citation(snippet: Snippet) -> str:
+    if snippet.source:
+        pack_label = snippet.pack_name or snippet.pack_slug
+        return f"{pack_label}: {snippet.source}" if pack_label else snippet.source
+    return snippet.ref
+
+
+def _format_source_tag(snippet: Snippet) -> str:
+    body = defang(snippet.text)[:MAX_SNIPPET_CHARS]
+    if not snippet.source:
+        return f'<retrieved_source id="{snippet.ref}">\n{body}\n</retrieved_source>'
+    attrs = [f'id="{defang(snippet.ref)}"']
+    pack_label = snippet.pack_name or snippet.pack_slug
+    if pack_label:
+        attrs.append(f'pack="{defang(pack_label)}"')
+    attrs.append(f'source="{defang(snippet.source)}"')
+    if snippet.document_type:
+        attrs.append(f'type="{defang(snippet.document_type)}"')
+    return f'<retrieved_source {" ".join(attrs)}>\n{body}\n</retrieved_source>'
 
 
 class SkillDraftGenerator:
@@ -41,10 +62,11 @@ class SkillDraftGenerator:
             pack.chunks += 1
 
         draft = await self._ask(self._build_prompt(spec, user_text))
+        snippet_sources = list(dict.fromkeys(_format_citation(s) for s in spec.snippets))
         return SkillDraftResult(
             **draft,
             grounded=grounded,
-            sources=[s.ref for s in spec.snippets] + (["user_source"] if user_text else []),
+            sources=snippet_sources + (["user_source"] if user_text else []),
             used_packs=list(used.values()),
             warnings=warnings,
         )
@@ -72,10 +94,7 @@ class SkillDraftGenerator:
         if hints:
             hints += "\n"
 
-        blocks = [
-            f'<retrieved_source id="{s.ref}">\n{defang(s.text)[:MAX_SNIPPET_CHARS]}\n</retrieved_source>'
-            for s in spec.snippets
-        ]
+        blocks = [_format_source_tag(s) for s in spec.snippets]
         if user_text:
             blocks.append(f"<user_source>\n{defang(user_text)}\n</user_source>")
         sources = "\n\n".join(blocks) if blocks else "(no sources provided)"

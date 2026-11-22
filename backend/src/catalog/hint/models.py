@@ -2,6 +2,8 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from src.schemas.skill_drafts import SkillDraftResult
+
 
 class CandidateKind(str, Enum):
     PROFILE = "profile"
@@ -41,6 +43,7 @@ class HintSelection(BaseModel):
     skill_keys: list[str] = Field(default_factory=list)
     tool_keys: list[str] = Field(default_factory=list)
     knowledge_pack_keys: list[str] = Field(default_factory=list)
+    search_queries: list[str] = Field(default_factory=list)
     gaps: list[CatalogGap] = Field(default_factory=list)
     reasoning: str = ""
 
@@ -51,4 +54,5 @@ class HintProposal(BaseModel):
     tools: list[dict] = Field(default_factory=list)
     knowledge_packs: list[dict] = Field(default_factory=list)
     gaps: list[CatalogGap] = Field(default_factory=list)
+    generated_skill: SkillDraftResult | None = None
     reasoning: str = ""
