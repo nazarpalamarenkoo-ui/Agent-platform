@@ -58,16 +58,31 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     try:
-        payload = decode_token(token, TOKEN_TYPE_ACCESS)
-        user_id = int(payload["sub"])
-    except (JWTError, KeyError, ValueError):
+        unverified = jwt.get_unverified_claims(token)
+        token_type = unverified.get("typ")
+    except JWTError:
         raise credentials_exception
+
+    if token_type == "device":
+        from src.repositories.device_code_repo import DeviceCodeRepository
+        from src.services.device_auth_service import DeviceAuthService
+
+        try:
+            device = await DeviceAuthService(DeviceCodeRepository(session)).authenticate(token)
+            user_id = device.user_id
+        except ValueError:
+            raise credentials_exception
+    else:
+        try:
+            payload = decode_token(token, TOKEN_TYPE_ACCESS)
+            user_id = int(payload["sub"])
+        except (JWTError, KeyError, ValueError):
+            raise credentials_exception
 
     user = await UserRepository(session).get_by_id(user_id)
     if user is None:
         raise credentials_exception
     return user
-
 
 async def require_admin(user: User = Depends(get_current_user)) -> User:
     if not user.is_admin:

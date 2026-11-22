@@ -5,7 +5,6 @@ from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import FastAPI
 
-from src.api.auth.admin.routes import router as admin_auth_router
 from src.api.auth.routes import router as auth_router
 from src.api.routers.admin import router as admin_router
 from src.api.routers.agents import router as agents_router
@@ -58,7 +57,6 @@ for router in (
     domain_router,
     knowledge_pack_router,
     auth_router,
-    admin_auth_router,
     admin_router,
     notifications_router,
     catalog_router,

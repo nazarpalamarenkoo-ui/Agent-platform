@@ -25,4 +25,5 @@ from . import (
     background_jobs,
     notification,
     skill_access_logs,
+    config_bundle_agents
 )

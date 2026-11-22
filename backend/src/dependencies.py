@@ -69,6 +69,7 @@ from src.repositories.device_code_repo import DeviceCodeRepository
 from src.repositories.notification_repo import NotificationRepository
 from src.repositories.background_job_repo import BackgroundJobRepository
 
+from src.catalog.draft.generator import SkillDraftGenerator
 from src.catalog.draft.planner import DraftPlanner
 from src.repositories.skill_access_log_repo import SkillAccessLogRepository
 from src.services.admin_user_content_service import AdminUserContentService
@@ -449,6 +450,7 @@ async def get_knowledge_service(
     tag_repo: TagRepository = Depends(get_tag_repo),
     domain_repo: KnowledgeDomainRepository = Depends(get_domain_repo),
     config_bundle_repo: ConfigBundleRepository = Depends(get_config_bundle_repo),
+    document_repo: DocumentRepository = Depends(get_document_repo),
 ) -> KnowledgeService:
     return KnowledgeService(
         corpus_builder=corpus_builder,
@@ -456,6 +458,7 @@ async def get_knowledge_service(
         tag_repo=tag_repo,
         knowledge_domain_repo=domain_repo,
         config_bundle_repo=config_bundle_repo,
+        document_repo=document_repo,
     )
 
 
@@ -473,6 +476,12 @@ async def get_candidate_collector(
     )
 
 
+async def get_skill_draft_generator(
+    llm_client: LLMClient = Depends(get_llm_client),
+) -> SkillDraftGenerator:
+    return SkillDraftGenerator(llm_client=llm_client)
+
+
 async def get_catalog_hint_service(
     llm_client: LLMClient = Depends(get_llm_client),
     candidate_collector: CandidateCollector = Depends(get_candidate_collector),
@@ -480,6 +489,9 @@ async def get_catalog_hint_service(
     tool_repo: ToolDefinitionRepository = Depends(get_tool_repo),
     pack_repo: KnowledgePackRepository = Depends(get_pack_repo),
     agent_repo: AgentProfileRepository = Depends(get_agent_repo),
+    knowledge_service: KnowledgeService = Depends(get_knowledge_service),
+    draft_generator: SkillDraftGenerator = Depends(get_skill_draft_generator),
+    document_repo: DocumentRepository = Depends(get_document_repo),
 ) -> CatalogHintService:
     return CatalogHintService(
         llm_client=llm_client,
@@ -488,6 +500,9 @@ async def get_catalog_hint_service(
         tool_repo=tool_repo,
         pack_repo=pack_repo,
         agent_repo=agent_repo,
+        knowledge_service=knowledge_service,
+        draft_generator=draft_generator,
+        document_repo=document_repo,
     )
 
 
