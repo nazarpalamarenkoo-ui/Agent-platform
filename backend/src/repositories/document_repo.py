@@ -11,10 +11,30 @@ from src.db.enums.document_status import DocumentStatus
 from src.repositories.base_repo import BaseRepository
 
 
+def format_document_source(source: str | None) -> str:
+    if not source:
+        return ""
+    raw = source.strip()
+    if not raw:
+        return ""
+    if raw.startswith(("http://", "https://")):
+        return raw
+    return raw.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+
+
 class DocumentRepository(BaseRepository[Document]):
 
     def __init__(self, session: AsyncSession):
         super().__init__(session, Document)
+
+    async def get_by_ids(self, document_ids: list[int]) -> list[Document]:
+        if not document_ids:
+            return []
+        unique_ids = list(dict.fromkeys(document_ids))
+        result = await self.session.execute(
+            select(Document).where(Document.id.in_(unique_ids))
+        )
+        return list(result.scalars().all())
 
     async def get_by_source(self, source: str) -> list[Document]:
         result = await self.session.execute(

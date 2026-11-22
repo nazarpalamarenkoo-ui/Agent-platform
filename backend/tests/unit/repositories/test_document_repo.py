@@ -1,6 +1,6 @@
 import pytest
 
-from src.repositories.document_repo import DocumentRepository
+from src.repositories.document_repo import DocumentRepository, format_document_source
 from src.db.enums.document_status import DocumentStatus
 
 pytestmark = pytest.mark.db
@@ -12,6 +12,30 @@ def doc_repo(db_session):
 
 
 class TestDocumentRepository:
+
+    async def test_get_by_ids_returns_matching_documents(self, doc_repo, sample_document):
+        results = await doc_repo.get_by_ids([sample_document.id, 999999])
+
+        assert [d.id for d in results] == [sample_document.id]
+
+    async def test_get_by_ids_empty_for_empty_list(self, doc_repo):
+        assert await doc_repo.get_by_ids([]) == []
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("https://docs.python.org/3/library/asyncio.html", "https://docs.python.org/3/library/asyncio.html"),
+            ("http://example.com/guide.pdf", "http://example.com/guide.pdf"),
+            ("/app/data/manuals/k8s-guide.pdf", "k8s-guide.pdf"),
+            (r"C:\Users\admin\docs\architecture.md", "architecture.md"),
+            ("manual.txt", "manual.txt"),
+            ("", ""),
+            ("   ", ""),
+            (None, ""),
+        ],
+    )
+    async def test_format_document_source(self, raw, expected):
+        assert format_document_source(raw) == expected
 
     async def test_get_by_source_found(self, doc_repo, sample_document):
         results = await doc_repo.get_by_source(sample_document.source)
