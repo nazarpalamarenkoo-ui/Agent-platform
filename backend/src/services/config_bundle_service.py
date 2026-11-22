@@ -38,18 +38,26 @@ class ConfigBundleService:
     async def create_bundle(
         self,
         user_id: int,
-        agent_id: int,
+        agent_id: int | None,
         name: str,
         description: str,
         skill_ids: list[int],
         tool_ids: list[int],
         knowledge_pack_ids: list[int] | None = None,
+        agent_ids: list[int] | None = None,
     ) -> ConfigBundle:
         name = self._clean_name(name)
 
-        profile = await self.agent_profile_repo.get_active(agent_id)
-        if profile is None:
-            raise NotFoundError("Agent profile not found")
+        target_agent_ids = _unique((agent_ids or []) + ([agent_id] if agent_id is not None else []))
+        if not target_agent_ids:
+            raise ValueError("At least one agent profile is required")
+
+        profiles = []
+        for aid in target_agent_ids:
+            prof = await self.agent_profile_repo.get_active(aid)
+            if prof is None:
+                raise NotFoundError("Agent profile not found")
+            profiles.append(prof)
 
         await self._ensure_name_free(user_id, name)
 
@@ -57,16 +65,18 @@ class ConfigBundleService:
         tools = await self._resolve_tools(user_id, tool_ids)
         packs = await self._resolve_packs(knowledge_pack_ids)
 
-        inherited_skill_ids = {s.id for s in profile.skills}
-        inherited_tool_ids = {t.id for t in profile.tools}
+        inherited_skill_ids = {s.id for p in profiles for s in p.skills}
+        inherited_tool_ids = {t.id for p in profiles for t in p.tools}
 
         bundle = await self.config_bundle_repo.create(
             user_id=user_id,
-            agent_id=profile.id,
+            agent_id=profiles[0].id,
             name=name,
             description=description,
         )
 
+        for prof in profiles:
+            await self.config_bundle_repo.add_agent_profile(bundle, prof)
         for skill in skills:
             if skill.id not in inherited_skill_ids:
                 await self.config_bundle_repo.add_skill(bundle, skill)
@@ -135,6 +145,8 @@ class ConfigBundleService:
             description=original.description if description is None else description,
         )
 
+        for prof in list(getattr(original, "agent_profiles", None) or []):
+            await self.config_bundle_repo.add_agent_profile(cloned, prof)
         for skill in list(original.skills):
             await self.config_bundle_repo.add_skill(cloned, skill)
         for tool in list(original.tools):
@@ -192,19 +204,30 @@ class ConfigBundleService:
         skill_ids: list[int] | None = None,
         tool_ids: list[int] | None = None,
         knowledge_pack_ids: list[int] | None = None,
+        agent_ids: list[int] | None = None,
     ) -> ConfigBundle:
         bundle = await self._load_owned(bundle_id, user_id)
         profile = await self.agent_profile_repo.admin_get_by_id(bundle.agent_id)
         if profile is None:
             raise NotFoundError("Agent profile not found")
 
+        new_profiles = []
+        for aid in _unique(agent_ids):
+            prof = await self.agent_profile_repo.get_active(aid)
+            if prof is None:
+                raise NotFoundError(UNAVAILABLE)
+            new_profiles.append(prof)
+
         skills = await self._resolve_skills(user_id, skill_ids)
         tools = await self._resolve_tools(user_id, tool_ids)
         packs = await self._resolve_packs(knowledge_pack_ids)
 
-        inherited_skill_ids = {s.id for s in profile.skills}
-        inherited_tool_ids = {t.id for t in profile.tools}
+        all_profiles = [profile, *(getattr(bundle, "agent_profiles", None) or []), *new_profiles]
+        inherited_skill_ids = {s.id for p in all_profiles for s in getattr(p, "skills", ())}
+        inherited_tool_ids = {t.id for p in all_profiles for t in getattr(p, "tools", ())}
 
+        for prof in new_profiles:
+            await self.config_bundle_repo.add_agent_profile(bundle, prof)
         for skill in skills:
             if skill.id not in inherited_skill_ids:
                 await self.config_bundle_repo.add_skill(bundle, skill)
@@ -223,17 +246,30 @@ class ConfigBundleService:
         skill_ids: list[int] | None = None,
         tool_ids: list[int] | None = None,
         knowledge_pack_ids: list[int] | None = None,
+        agent_ids: list[int] | None = None,
     ) -> ConfigBundle:
         bundle = await self._load_owned(bundle_id, user_id)
         profile = await self.agent_profile_repo.admin_get_by_id(bundle.agent_id)
         if profile is None:
             raise NotFoundError("Agent profile not found")
 
+        own_profiles = {p.id: p for p in (getattr(bundle, "agent_profiles", None) or [])}
+        profiles_to_remove = [
+            own_profiles[aid] for aid in _unique(agent_ids) if aid in own_profiles
+        ]
+        if profiles_to_remove and len(profiles_to_remove) >= len(own_profiles):
+            raise ConflictError("At least one agent profile must remain in the bundle")
+
+        removing_profile_ids = {p.id for p in profiles_to_remove}
+        remaining_profiles = [
+            p for p in [profile, *own_profiles.values()] if p.id not in removing_profile_ids
+        ]
+
         own_skills = {s.id: s for s in bundle.skills}
         own_tools = {t.id: t for t in bundle.tools}
         own_packs = {p.id: p for p in bundle.knowledge_packs}
-        inherited_skill_ids = {s.id for s in profile.skills}
-        inherited_tool_ids = {t.id for t in profile.tools}
+        inherited_skill_ids = {s.id for p in remaining_profiles for s in getattr(p, "skills", ())}
+        inherited_tool_ids = {t.id for p in remaining_profiles for t in getattr(p, "tools", ())}
 
         skills_to_remove: list[Skill] = []
         for skill_id in _unique(skill_ids):
@@ -252,6 +288,15 @@ class ConfigBundleService:
         packs_to_remove: list[KnowledgePack] = [
             own_packs[pack_id] for pack_id in _unique(knowledge_pack_ids) if pack_id in own_packs
         ]
+
+        for prof in profiles_to_remove:
+            await self.config_bundle_repo.remove_agent_profile(bundle, prof)
+        if profiles_to_remove and bundle.agent_id in removing_profile_ids:
+            next_primary = next(
+                (pid for pid in own_profiles if pid not in removing_profile_ids), None
+            )
+            if next_primary is not None:
+                await self.config_bundle_repo.update(bundle, agent_id=next_primary)
 
         for skill in skills_to_remove:
             await self.config_bundle_repo.remove_skill(bundle, skill)

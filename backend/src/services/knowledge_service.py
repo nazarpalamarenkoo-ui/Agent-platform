@@ -9,6 +9,7 @@ from src.rag.retrieval.agentic.models import AgenticContext
 from src.rag.retrieval.retrieval import Retrieval
 from src.rag.storage.base_vector_store import VectorSearchResult
 from src.repositories.config_bundle_repo import ConfigBundleRepository
+from src.repositories.document_repo import DocumentRepository
 from src.repositories.knowledge_domain_repo import KnowledgeDomainRepository
 from src.repositories.tag_repo import TagRepository
 
@@ -24,12 +25,14 @@ class KnowledgeService:
         tag_repo: TagRepository,
         knowledge_domain_repo: KnowledgeDomainRepository,
         config_bundle_repo: ConfigBundleRepository,
+        document_repo: DocumentRepository | None = None,
     ):
         self.corpus_builder = corpus_builder
         self.retrieval = retrieval
         self.tag_repo = tag_repo
         self.domain_repo = knowledge_domain_repo
         self.config_bundle_repo = config_bundle_repo
+        self.document_repo = document_repo
 
     async def ingest_file(
         self,

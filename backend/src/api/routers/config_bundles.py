@@ -33,6 +33,11 @@ async def create_bundle(
     service: ConfigBundleService = Depends(get_config_bundle_service),
 ) -> ConfigBundleRead:
     try:
+        extra = (
+            {"agent_ids": body.agent_ids}
+            if body.agent_ids and body.agent_ids != [body.agent_id]
+            else {}
+        )
         bundle = await service.create_bundle(
             actor.id,
             body.agent_id,
@@ -41,6 +46,7 @@ async def create_bundle(
             body.skill_ids,
             body.tool_ids,
             body.knowledge_pack_ids,
+            **extra,
         )
         return ConfigBundleRead.model_validate(bundle)
     except NotFoundError as e:
@@ -162,12 +168,14 @@ async def add_items(
     service: ConfigBundleService = Depends(get_config_bundle_service),
 ) -> ConfigBundleRead:
     try:
+        extra = {"agent_ids": body.agent_ids} if body.agent_ids else {}
         bundle = await service.add_to_bundle(
             bundle_id,
             actor.id,
             skill_ids=body.skill_ids,
             tool_ids=body.tool_ids,
             knowledge_pack_ids=body.knowledge_pack_ids,
+            **extra,
         )
         return ConfigBundleRead.model_validate(bundle)
     except NotFoundError as e:
@@ -182,12 +190,14 @@ async def remove_items(
     service: ConfigBundleService = Depends(get_config_bundle_service),
 ) -> ConfigBundleRead:
     try:
+        extra = {"agent_ids": body.agent_ids} if body.agent_ids else {}
         bundle = await service.remove_from_bundle(
             bundle_id,
             actor.id,
             skill_ids=body.skill_ids,
             tool_ids=body.tool_ids,
             knowledge_pack_ids=body.knowledge_pack_ids,
+            **extra,
         )
         return ConfigBundleRead.model_validate(bundle)
     except NotFoundError as e:

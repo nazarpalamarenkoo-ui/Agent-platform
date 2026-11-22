@@ -7,6 +7,7 @@ class ConfigBundleUpdate(BaseModel):
 
 
 class BundleItems(BaseModel):
+    agent_ids: list[int] = Field(default_factory=list)
     skill_ids: list[int] = Field(default_factory=list)
     tool_ids: list[int] = Field(default_factory=list)
     knowledge_pack_ids: list[int] = Field(default_factory=list)

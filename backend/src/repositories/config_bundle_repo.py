@@ -4,15 +4,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.db.models.config_bundles import ConfigBundle
-from src.db.models.config_bundle_skills import ConfigBundleSkill
-from src.db.models.config_bunlde_tools import ConfigBundleTool
 from src.db.models.agent_profile_skills import AgentProfileSkill
 from src.db.models.agent_profile_tools import AgentProfileTool
+from src.db.models.agent_profiles import AgentProfile
+from src.db.models.config_bundle_agents import ConfigBundleAgent
+from src.db.models.config_bundle_skills import ConfigBundleSkill
+from src.db.models.config_bundles import ConfigBundle
+from src.db.models.config_bunlde_tools import ConfigBundleTool
+from src.db.models.knowledge_packs import KnowledgePack
 from src.db.models.skills import Skill
 from src.db.models.tools_definition import ToolDefinition
-from src.db.models.knowledge_packs import KnowledgePack
-
 from src.repositories.base_repo import BaseRepository
 
 
@@ -23,6 +24,7 @@ class ConfigBundleRepository(BaseRepository[ConfigBundle]):
 
     def _with_relations(self, stmt):
         return stmt.options(
+            selectinload(ConfigBundle.agent_profiles),
             selectinload(ConfigBundle.skills),
             selectinload(ConfigBundle.tools),
             selectinload(ConfigBundle.knowledge_packs),
@@ -72,7 +74,6 @@ class ConfigBundleRepository(BaseRepository[ConfigBundle]):
         return result.scalar_one_or_none()
 
     async def get_unscoped_with_relations(self, config_id: int) -> Optional[ConfigBundle]:
-
         result = await self.session.execute(
             self._with_relations(
                 select(ConfigBundle).where(ConfigBundle.id == config_id)
@@ -97,7 +98,19 @@ class ConfigBundleRepository(BaseRepository[ConfigBundle]):
             )
             .where(AgentProfileSkill.skill_id == skill_id)
         )
-        result = await self.session.execute(direct.union(via_profile))
+        via_team_profiles = (
+            select(ConfigBundle.user_id)
+            .join(
+                ConfigBundleAgent,
+                ConfigBundleAgent.config_bundle_id == ConfigBundle.id,
+            )
+            .join(
+                AgentProfileSkill,
+                AgentProfileSkill.agent_id == ConfigBundleAgent.agent_id,
+            )
+            .where(AgentProfileSkill.skill_id == skill_id)
+        )
+        result = await self.session.execute(direct.union(via_profile, via_team_profiles))
         return [row[0] for row in result.all()]
 
     async def list_user_ids_with_tool(self, tool_id: int) -> list[int]:
@@ -117,8 +130,34 @@ class ConfigBundleRepository(BaseRepository[ConfigBundle]):
             )
             .where(AgentProfileTool.tool_id == tool_id)
         )
-        result = await self.session.execute(direct.union(via_profile))
+        via_team_profiles = (
+            select(ConfigBundle.user_id)
+            .join(
+                ConfigBundleAgent,
+                ConfigBundleAgent.config_bundle_id == ConfigBundle.id,
+            )
+            .join(
+                AgentProfileTool,
+                AgentProfileTool.agent_id == ConfigBundleAgent.agent_id,
+            )
+            .where(AgentProfileTool.tool_id == tool_id)
+        )
+        result = await self.session.execute(direct.union(via_profile, via_team_profiles))
         return [row[0] for row in result.all()]
+
+    async def add_agent_profile(self, config: ConfigBundle, profile: AgentProfile) -> ConfigBundle:
+        await self.session.refresh(config, attribute_names=["agent_profiles"])
+        if profile not in config.agent_profiles:
+            config.agent_profiles.append(profile)
+        await self.session.flush()
+        return config
+
+    async def remove_agent_profile(self, config: ConfigBundle, profile: AgentProfile) -> ConfigBundle:
+        await self.session.refresh(config, attribute_names=["agent_profiles"])
+        if profile in config.agent_profiles:
+            config.agent_profiles.remove(profile)
+        await self.session.flush()
+        return config
 
     async def add_skill(self, config: ConfigBundle, skill: Skill) -> ConfigBundle:
         await self.session.refresh(config, attribute_names=["skills"])

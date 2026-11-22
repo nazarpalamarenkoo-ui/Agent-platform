@@ -31,9 +31,9 @@ class ConfigBundle(Base):
         index=True,
     )
     
-    agent_id: Mapped[int] = mapped_column(
+    agent_id: Mapped[int | None] = mapped_column(
         ForeignKey("agent_profiles.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
 
@@ -59,14 +59,22 @@ class ConfigBundle(Base):
         onupdate=func.now(),
         nullable=False,
     )
-
+    
     user: Mapped["User"] = relationship(
         back_populates="configs",
         lazy="selectin",
         passive_deletes=True,
     )
 
-    agent: Mapped["AgentProfile"] = relationship(
+    agent: Mapped["AgentProfile | None"] = relationship(
+        "AgentProfile",
+        foreign_keys=[agent_id],
+        lazy="selectin",
+        passive_deletes=True,
+    )
+
+    agent_profiles: Mapped[list["AgentProfile"]] = relationship(
+        secondary="config_bundle_agents",
         back_populates="config_bundles",
         lazy="selectin",
         passive_deletes=True,

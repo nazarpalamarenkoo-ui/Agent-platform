@@ -49,6 +49,19 @@ class BundleExportService:
             )
 
         archived = {s.id: s.archived for s in effective.skills}
+        profile_entries = [
+            {
+                "id": p.id,
+                "name": p.agent_name,
+                "description": p.description,
+                "skill_ids": [s.id for s in p.skills],
+                "tool_ids": [t.id for t in p.tools],
+            }
+            for p in (getattr(bundle, "agent_profiles", None) or [])
+        ]
+        if not profile_entries:
+            profile_entries = [{"id": effective.agent_id, "name": effective.agent_name}]
+            
         manifest = {
             "schema_version": EXPORT_SCHEMA_VERSION,
             "bundle": {
@@ -57,6 +70,7 @@ class BundleExportService:
                 "description": bundle.description,
             },
             "agent_profile": {"id": effective.agent_id, "name": effective.agent_name},
+            "agent_profiles": profile_entries,
             "skills": [
                 {
                     "id": meta["id"],

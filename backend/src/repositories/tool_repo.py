@@ -13,6 +13,7 @@ from src.db.models.knowledge_domains import KnowledgeDomain
 from src.db.models.config_bundles import ConfigBundle
 from src.db.models.config_bunlde_tools import ConfigBundleTool
 from src.db.models.agent_profile_tools import AgentProfileTool
+from src.db.models.config_bundle_agents import ConfigBundleAgent
 
 def _visible_to(viewer_id: int):
     return and_(
@@ -27,13 +28,20 @@ def _in_effective_set(bundle_id: int):
     direct = select(ConfigBundleTool.tool_id).where(
         ConfigBundleTool.config_bundle_id == bundle_id
     )
-    via_profile = (
+    via_primary_profile = (
         select(AgentProfileTool.tool_id)
         .join(ConfigBundle, ConfigBundle.agent_id == AgentProfileTool.agent_id)
         .where(ConfigBundle.id == bundle_id)
     )
+    via_team_profiles = (
+        select(AgentProfileTool.tool_id)
+        .join(ConfigBundleAgent, ConfigBundleAgent.agent_id == AgentProfileTool.agent_id)
+        .where(ConfigBundleAgent.config_bundle_id == bundle_id)
+    )
     return or_(
-        ToolDefinition.id.in_(direct), ToolDefinition.id.in_(via_profile)
+        ToolDefinition.id.in_(direct),
+        ToolDefinition.id.in_(via_primary_profile),
+        ToolDefinition.id.in_(via_team_profiles),
     )
 
 

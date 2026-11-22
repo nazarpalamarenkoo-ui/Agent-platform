@@ -14,7 +14,7 @@ from src.db.models.knowledge_domains import KnowledgeDomain
 from src.db.models.config_bundles import ConfigBundle
 from src.db.models.config_bundle_skills import ConfigBundleSkill
 from src.db.models.agent_profile_skills import AgentProfileSkill
-
+from src.db.models.config_bundle_agents import ConfigBundleAgent
 
 def _visible_to(viewer_id: int):
     return and_(
@@ -30,12 +30,21 @@ def _in_effective_set(bundle_id: int):
     direct = select(ConfigBundleSkill.skill_id).where(
         ConfigBundleSkill.config_bundle_id == bundle_id
     )
-    via_profile = (
+    via_primary_profile = (
         select(AgentProfileSkill.skill_id)
         .join(ConfigBundle, ConfigBundle.agent_id == AgentProfileSkill.agent_id)
         .where(ConfigBundle.id == bundle_id)
     )
-    return or_(Skill.id.in_(direct), Skill.id.in_(via_profile))
+    via_team_profiles = (
+        select(AgentProfileSkill.skill_id)
+        .join(ConfigBundleAgent, ConfigBundleAgent.agent_id == AgentProfileSkill.agent_id)
+        .where(ConfigBundleAgent.config_bundle_id == bundle_id)
+    )
+    return or_(
+        Skill.id.in_(direct),
+        Skill.id.in_(via_primary_profile),
+        Skill.id.in_(via_team_profiles),
+    )
 
 
 class SkillRepository(BaseRepository[Skill]):

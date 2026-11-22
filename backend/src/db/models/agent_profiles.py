@@ -76,7 +76,8 @@ class AgentProfile(Base):
     )
 
     config_bundles: Mapped[list["ConfigBundle"]] = relationship(
-        back_populates="agent",
+        secondary="config_bundle_agents",
+        back_populates="agent_profiles",
         lazy="raise",
         passive_deletes=True,
     )

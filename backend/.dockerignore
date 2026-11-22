@@ -27,3 +27,4 @@ build/
 .ruff_cache
 
 models
+*.gguf
