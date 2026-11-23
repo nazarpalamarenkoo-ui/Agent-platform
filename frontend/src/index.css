@@ -1,0 +1,83 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 38 34% 94%;
+  --foreground: 20 10% 8%;
+  --card: 40 40% 97%;
+  --card-foreground: 20 10% 8%;
+  --popover: 40 40% 97%;
+  --popover-foreground: 20 10% 8%;
+
+  --primary: 20 10% 8%;
+  --primary-foreground: 38 34% 94%;
+  --secondary: 36 28% 90%;
+  --secondary-foreground: 20 10% 12%;
+  --muted: 36 22% 89%;
+  --muted-foreground: 25 8% 38%;
+
+  --accent: 36 28% 90%;
+  --accent-foreground: 20 10% 12%;
+
+  --destructive: 0 72% 42%;
+  --destructive-foreground: 40 40% 97%;
+  --border: 30 15% 80%;
+  --input: 34 20% 86%;
+  --ring: 8 80% 45%;
+
+  --red: 8 80% 45%;
+  --red-deep: 8 84% 32%;
+  --red-bright: 6 88% 55%;
+  --red-wash: 8 70% 94%;
+  --accent-subtle: 8 70% 94%;
+  --accent-subtle-foreground: 8 84% 34%;
+
+  --beige-50: 40 40% 97%;
+  --beige-100: 38 34% 94%;
+  --beige-200: 36 26% 89%;
+  --beige-300: 34 18% 81%;
+  --ink: 20 10% 8%;
+  --ink-soft: 24 8% 28%;
+  --hairline: 20 10% 8%;
+
+  --chart-1: 8 80% 45%;
+  --chart-2: 20 10% 8%;
+  --chart-3: 24 8% 28%;
+  --chart-4: 34 18% 55%;
+  --chart-5: 34 18% 81%;
+
+  --sidebar: 36 28% 90%;
+  --sidebar-foreground: 20 10% 8%;
+  --sidebar-primary: 20 10% 8%;
+  --sidebar-primary-foreground: 38 34% 94%;
+  --sidebar-accent: 36 22% 85%;
+  --sidebar-accent-foreground: 20 10% 8%;
+  --sidebar-border: 30 15% 80%;
+  --sidebar-ring: 8 80% 45%;
+
+  --radius: 0.25rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-serif;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: hsl(var(--red-wash));
+    color: hsl(var(--accent-subtle-foreground));
+  }
+}
