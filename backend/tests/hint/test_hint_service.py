@@ -436,3 +436,29 @@ def test_propose_returns_no_generated_skill_when_rag_finds_no_relevant_chunks():
         {"id": 1, "name": "Docker Documentation", "description": "Official Docker docs"}
     ]
     assert proposal.generated_skill is None
+
+
+class FakeTokenRepo:
+    def __init__(self, exceeded=False):
+        self.exceeded = exceeded
+        self.reported: list[tuple[int, int, int | None]] = []
+
+    async def is_user_limit_exceeded(self, user_id: int) -> bool:
+        return self.exceeded
+
+    async def report_usage_by_user_id(self, user_id: int, tokens_used: int, agent_id=None):
+        self.reported.append((user_id, tokens_used, agent_id))
+
+
+def test_propose_rejects_when_user_token_limit_exceeded():
+    from src.services.errors import ForbiddenError
+
+    llm = ScriptedLLM(_selection())
+    service, collector, _ = _service(llm)
+    service.token_repo = FakeTokenRepo(exceeded=True)
+
+    with pytest.raises(ForbiddenError, match="Token limit exceeded"):
+        run(service.propose(1, "build api"))
+
+    assert collector.viewers == []
+    assert llm.calls == []

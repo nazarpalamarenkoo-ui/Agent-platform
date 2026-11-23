@@ -32,6 +32,22 @@ class TokenUsageEventRepository(BaseRepository[TokenUsageEvent]):
         await self.session.flush()
         return event
 
+    async def report_usage_by_user_id(
+        self,
+        user_id: int,
+        tokens_used: int,
+        agent_id: Optional[int] = None,
+    ) -> Optional[TokenUsageEvent]:
+        if tokens_used <= 0:
+            return None
+        result = await self.session.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if user is None:
+            return None
+        event = await self.report_usage(user=user, tokens_used=tokens_used, agent_id=agent_id)
+        await self.session.commit()
+        return event
+
     async def get_usage_for_user(self, user_id: int) -> list[TokenUsageEvent]:
 
         result = await self.session.execute(
@@ -52,3 +68,13 @@ class TokenUsageEventRepository(BaseRepository[TokenUsageEvent]):
     async def is_limit_exceeded(self, user: User) -> bool:
         await self.session.refresh(user, attribute_names=["tokens_used", "token_limit"])
         return user.tokens_used >= user.token_limit
+
+    async def is_user_limit_exceeded(self, user_id: int) -> bool:
+        result = await self.session.execute(
+            select(User.tokens_used, User.token_limit).where(User.id == user_id)
+        )
+        row = result.one_or_none()
+        if row is None:
+            return False
+        tokens_used, token_limit = row
+        return int(tokens_used or 0) >= int(token_limit or 0)

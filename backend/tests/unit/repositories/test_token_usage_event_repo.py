@@ -102,3 +102,18 @@ class TestTokenUsageEventRepository:
         result = await token_repo.is_limit_exceeded(sample_user)
 
         assert result is True
+
+    async def test_report_usage_by_user_id_and_is_user_limit_exceeded(
+        self, token_repo, sample_user
+    ):
+        sample_user.tokens_used = 0
+        sample_user.token_limit = 500
+        await token_repo.session.flush()
+
+        assert await token_repo.is_user_limit_exceeded(sample_user.id) is False
+        event = await token_repo.report_usage_by_user_id(sample_user.id, tokens_used=500)
+        assert event is not None
+        assert event.tokens_used == 500
+        assert await token_repo.is_user_limit_exceeded(sample_user.id) is True
+        assert await token_repo.report_usage_by_user_id(999999, tokens_used=100) is None
+        assert await token_repo.report_usage_by_user_id(sample_user.id, tokens_used=0) is None

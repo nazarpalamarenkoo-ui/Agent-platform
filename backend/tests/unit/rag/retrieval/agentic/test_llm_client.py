@@ -13,6 +13,7 @@ from src.rag.retrieval.agentic.llm_client import (
     DEFAULT_MODEL,
     GROQ_BASE_URL,
     LLMClient,
+    track_token_usage,
 )
 
 MODULE = "src.rag.retrieval.agentic.llm_client"
@@ -28,11 +29,16 @@ def make_api_error():
     return APIError("boom", request=httpx.Request("POST", "http://test"), body=None)
 
 
-def make_response(content, finish_reason="stop"):
+def make_response(content, finish_reason="stop", prompt_tokens=0, completion_tokens=0, total_tokens=0):
     resp = MagicMock()
     resp.choices = [MagicMock()]
     resp.choices[0].message.content = content
     resp.choices[0].finish_reason = finish_reason
+    resp.usage = MagicMock(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+    )
     return resp
 
 
@@ -309,3 +315,22 @@ class TestCompleteJson:
 
         with pytest.raises(LLMRateLimitError):
             await client.complete_json("p")
+
+
+class TestTrackTokenUsage:
+
+    async def test_accumulates_tokens_across_multiple_llm_calls(self, client, create):
+        create.side_effect = [
+            make_response('{"step": 1}', prompt_tokens=120, completion_tokens=30, total_tokens=150),
+            make_response('{"step": 2}', prompt_tokens=400, completion_tokens=100, total_tokens=500),
+        ]
+
+        with track_token_usage() as usage:
+            await client.complete_json("first")
+            await client.complete_json("second")
+
+        assert usage.total_tokens == 650
+        assert usage.prompt_tokens == 520
+        assert usage.completion_tokens == 130
+        assert usage.calls == 2
+        assert client.last_tokens_used == 500

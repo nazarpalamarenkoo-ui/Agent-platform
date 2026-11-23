@@ -6,11 +6,13 @@ from arq.connections import RedisSettings
 from qdrant_client import AsyncQdrantClient
 
 from src.config import settings
-from src.db.db_connection import dispose_engine
+from src.db.db_connection import AsyncSessionLocal, dispose_engine
 from src.dependencies import BROWSER_HEADERS
 from src.knowledge.acquisition.judge.judge_llm_client import JudgeLLMClient
 from src.rag.embeddings.bge_m3 import Embedding
 from src.repositories.background_job_repo import BackgroundJobRepository
+from src.repositories.session_per_call import per_call
+from src.repositories.token_usage_event_repo import TokenUsageEventRepository
 from src.worker.deps import (
     build_corpus_builder,
     build_draft_generator,
@@ -48,6 +50,7 @@ async def startup(ctx: dict) -> None:
     logger.info("worker_startup_begin")
 
     ctx["job_repo"] = BackgroundJobRepository()
+    ctx["token_repo"] = per_call(TokenUsageEventRepository, AsyncSessionLocal)
 
     stale = await ctx["job_repo"].fail_stale_running(
         "Worker restarted while job was running"

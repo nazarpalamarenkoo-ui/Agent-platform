@@ -15,19 +15,22 @@ from src.catalog.hint.prompts import (
     HINT_USER_TEMPLATE,
 )
 from src.rag.retrieval.agentic.exceptions import LLMClientError, LLMParseError, LLMRateLimitError
-from src.rag.retrieval.agentic.llm_client import LLMClient
+from src.rag.retrieval.agentic.llm_client import LLMClient, track_token_usage
 from src.repositories.agent_profile_repo import AgentProfileRepository
 from src.repositories.document_repo import DocumentRepository
 from src.repositories.knowledge_pack_repo import KnowledgePackRepository
 from src.repositories.skill_repo import SkillRepository
+from src.repositories.token_usage_event_repo import TokenUsageEventRepository
 from src.repositories.tool_repo import ToolDefinitionRepository
 from src.schemas.skill_drafts import SkillDraftResult
+from src.services.errors import ForbiddenError
 from src.services.knowledge_service import KnowledgeService
 
 logger = logging.getLogger(__name__)
 
 CANDIDATE_WARN_THRESHOLD = 500
 MAX_INTENT_CHARS = 2000
+TOKEN_LIMIT_EXCEEDED = "Token limit exceeded"
 
 
 class CatalogHintService:
@@ -43,6 +46,7 @@ class CatalogHintService:
         knowledge_service: KnowledgeService | None = None,
         draft_generator: SkillDraftGenerator | None = None,
         document_repo: DocumentRepository | None = None,
+        token_repo: TokenUsageEventRepository | None = None,
         max_retries: int = 1,
     ):
         self.llm_client = llm_client
@@ -54,6 +58,7 @@ class CatalogHintService:
         self.knowledge_service = knowledge_service
         self.draft_generator = draft_generator
         self.document_repo = document_repo
+        self.token_repo = token_repo
         self.max_retries = max_retries
 
     async def propose(self, viewer_id: int, intent: str) -> HintProposal:
@@ -62,6 +67,9 @@ class CatalogHintService:
         if len(intent) > MAX_INTENT_CHARS:
             raise ValueError(f"intent must not exceed {MAX_INTENT_CHARS} characters")
 
+        if self.token_repo is not None and await self.token_repo.is_user_limit_exceeded(viewer_id):
+            raise ForbiddenError(TOKEN_LIMIT_EXCEEDED)
+
         candidates = await self.candidate_collector.collect(viewer_id)
         self._log_candidates(viewer_id, candidates)
         if not candidates:
@@ -69,17 +77,34 @@ class CatalogHintService:
 
         clean_intent = intent.strip()
         prompt = self._build_prompt(clean_intent, candidates)
-        selection = await self._ask_with_retry(prompt, candidates)
-        proposal, packs = await self._expand_with_packs(viewer_id, selection)
+        agent_id: int | None = None
 
-        if packs and self.knowledge_service is not None:
-            proposal.generated_skill = await self._generate_grounded_skill(
-                intent=clean_intent,
-                selection=selection,
-                packs=packs,
-            )
+        with track_token_usage() as usage:
+            try:
+                selection = await self._ask_with_retry(prompt, candidates)
+                proposal, packs = await self._expand_with_packs(viewer_id, selection)
+                if proposal.agent_profile:
+                    agent_id = proposal.agent_profile.get("id")
 
-        return proposal
+                if packs and self.knowledge_service is not None:
+                    proposal.generated_skill = await self._generate_grounded_skill(
+                        intent=clean_intent,
+                        selection=selection,
+                        packs=packs,
+                    )
+                return proposal
+            finally:
+                if self.token_repo is not None and usage.total_tokens > 0:
+                    try:
+                        await self.token_repo.report_usage_by_user_id(
+                            user_id=viewer_id,
+                            tokens_used=usage.total_tokens,
+                            agent_id=agent_id,
+                        )
+                    except Exception:
+                        logger.warning(
+                            "Failed to record token usage for user %s", viewer_id, exc_info=True
+                        )
 
     def _log_candidates(self, viewer_id: int, candidates: list[CatalogCandidate]) -> None:
         counts = Counter(c.kind.value for c in candidates)

@@ -492,6 +492,7 @@ async def get_catalog_hint_service(
     knowledge_service: KnowledgeService = Depends(get_knowledge_service),
     draft_generator: SkillDraftGenerator = Depends(get_skill_draft_generator),
     document_repo: DocumentRepository = Depends(get_document_repo),
+    token_repo: TokenUsageEventRepository = Depends(get_token_repo),
 ) -> CatalogHintService:
     return CatalogHintService(
         llm_client=llm_client,
@@ -503,6 +504,7 @@ async def get_catalog_hint_service(
         knowledge_service=knowledge_service,
         draft_generator=draft_generator,
         document_repo=document_repo,
+        token_repo=token_repo,
     )
 
 
@@ -647,6 +649,7 @@ async def get_skill_draft_service(
     skill_repo: SkillRepository = Depends(get_skill_repo),
     pack_repo: KnowledgePackRepository = Depends(get_pack_repo),
     planner: DraftPlanner = Depends(get_draft_planner),
+    token_repo: TokenUsageEventRepository = Depends(get_token_repo),
 ) -> SkillDraftService:
     return SkillDraftService(
         job_repo=job_repo,
@@ -657,6 +660,7 @@ async def get_skill_draft_service(
         bundle_service=bundle_service,
         pack_repo=pack_repo,
         planner=planner,
+        token_repo=token_repo,
     )
     
 async def get_user_tool_service(

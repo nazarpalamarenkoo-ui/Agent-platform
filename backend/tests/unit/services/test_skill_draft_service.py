@@ -90,6 +90,18 @@ def service(repos):
 
 
 class TestRequestDraft:
+    async def test_rejects_when_token_limit_exceeded(self, service, repos):
+        from src.services.errors import ForbiddenError
+
+        token_repo = AsyncMock()
+        token_repo.is_user_limit_exceeded.return_value = True
+        service.token_repo = token_repo
+
+        with pytest.raises(ForbiddenError, match="Token limit exceeded"):
+            await service.request_draft(ACTOR, make_req())
+
+        repos.job.create.assert_not_awaited()
+
     async def test_rejects_when_quota_reached(self, service, repos):
         repos.skill.count_owned_active.return_value = 5
 

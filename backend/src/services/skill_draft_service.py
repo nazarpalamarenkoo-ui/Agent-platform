@@ -7,9 +7,11 @@ from src.catalog.draft.sources import WARN_NO_PACKS, collect_snippets
 from src.db.models.background_jobs import JobStatus, JobType
 from src.db.models.skills import Skill
 from src.db.models.users import User
+from src.rag.retrieval.agentic.llm_client import track_token_usage
 from src.repositories.background_job_repo import BackgroundJobRepository
 from src.repositories.skill_repo import SkillRepository
 from src.repositories.knowledge_pack_repo import KnowledgePackRepository
+from src.repositories.token_usage_event_repo import TokenUsageEventRepository
 from src.schemas.skill_drafts import (
     SkillDraftConfirm,
     SkillDraftRequest,
@@ -17,7 +19,7 @@ from src.schemas.skill_drafts import (
     SkillDraftStatus,
 )
 from src.services.config_bundle_service import ConfigBundleService
-from src.services.errors import ConflictError, NotFoundError
+from src.services.errors import ConflictError, ForbiddenError, NotFoundError
 from src.services.knowledge_service import KnowledgeService
 from src.services.user_skill_service import UserSkillService
 from src.worker.queues import INGESTION_QUEUE
@@ -27,6 +29,7 @@ logger = logging.getLogger(__name__)
 GENERIC_DRAFT_ERROR = "Draft generation failed, try again later"
 CONFIRMED_KEY = "confirmed_skill_id"
 PACKS_UNAVAILABLE = "One or more selected knowledge packs are unavailable"
+TOKEN_LIMIT_EXCEEDED = "Token limit exceeded"
 
 class DraftQueueError(Exception):
     pass
@@ -42,7 +45,8 @@ class SkillDraftService:
         knowledge_service: KnowledgeService,
         bundle_service: ConfigBundleService,
         pack_repo: KnowledgePackRepository,
-        planner: DraftPlanner
+        planner: DraftPlanner,
+        token_repo: TokenUsageEventRepository | None = None,
     ):
         self.job_repo = job_repo
         self.arq_pool = arq_pool
@@ -52,6 +56,7 @@ class SkillDraftService:
         self.bundles = bundle_service
         self.pack_repo = pack_repo
         self.planner = planner
+        self.token_repo = token_repo
         
     async def _resolve_packs(self, actor: User, req: SkillDraftRequest) -> list:
         packs: dict[int, object] = {}
@@ -73,6 +78,9 @@ class SkillDraftService:
         return list(packs.values())
     
     async def request_draft(self, actor: User, req: SkillDraftRequest) -> tuple[int, str]:
+        if self.token_repo is not None and await self.token_repo.is_user_limit_exceeded(actor.id):
+            raise ForbiddenError(TOKEN_LIMIT_EXCEEDED)
+
         limit = self.user_skills.max_private_skills
         if await self.skill_repo.count_owned_active(actor.id) >= limit:
             raise ConflictError(f"You can have at most {limit} active private skills")
@@ -84,7 +92,15 @@ class SkillDraftService:
         need_pick = req.auto_packs and not packs
         need_queries = bool(packs) and not req.search_queries
         if need_pick or need_queries:
-            plan = await self.planner.plan(intent, pick_packs=need_pick)
+            with track_token_usage() as usage:
+                plan = await self.planner.plan(intent, pick_packs=need_pick)
+            if self.token_repo is not None and usage.total_tokens > 0:
+                try:
+                    await self.token_repo.report_usage_by_user_id(actor.id, usage.total_tokens)
+                except Exception:
+                    logger.warning(
+                        "Failed to record planner token usage for user %s", actor.id, exc_info=True
+                    )
             if need_pick and plan.pack_ids:
                 packs = await self.pack_repo.get_active_many(plan.pack_ids)
             queries += plan.queries
